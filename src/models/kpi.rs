@@ -40,3 +40,71 @@ pub enum ServiceStatus {
     HighLoad,
     Timeout,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fleet_kpis_serializes() {
+        let kpis = FleetKpis {
+            total_active_agents: 500,
+            failed_agents: 3,
+            attestation_success_rate: 99.4,
+            average_attestation_latency_ms: 45.2,
+            certificate_expiry_warnings: 2,
+            active_ima_policies: 5,
+            revocation_events_24h: 0,
+            registration_count: 512,
+        };
+        let json = serde_json::to_value(&kpis).unwrap();
+        assert_eq!(json["total_active_agents"], 500);
+        assert_eq!(json["failed_agents"], 3);
+        assert_eq!(json["attestation_success_rate"], 99.4);
+        assert_eq!(json["revocation_events_24h"], 0);
+    }
+
+    #[test]
+    fn attestation_summary_serializes() {
+        let summary = AttestationSummary {
+            total_successful: 1000,
+            total_failed: 5,
+            average_latency_ms: 42.0,
+            success_rate: 99.5,
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["total_successful"], 1000);
+        assert_eq!(json["total_failed"], 5);
+        assert_eq!(json["success_rate"], 99.5);
+    }
+
+    #[test]
+    fn service_status_serde_roundtrip() {
+        for (status, expected) in [
+            (ServiceStatus::Up, "\"UP\""),
+            (ServiceStatus::Down, "\"DOWN\""),
+            (ServiceStatus::HighLoad, "\"HIGH_LOAD\""),
+            (ServiceStatus::Timeout, "\"TIMEOUT\""),
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let deserialized: ServiceStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, status);
+        }
+    }
+
+    #[test]
+    fn service_health_serializes() {
+        let health = ServiceHealth {
+            name: "verifier".into(),
+            endpoint: "https://verifier:8881".into(),
+            status: ServiceStatus::Up,
+            uptime_seconds: Some(86400),
+            latency_ms: Some(12),
+        };
+        let json = serde_json::to_value(&health).unwrap();
+        assert_eq!(json["name"], "verifier");
+        assert_eq!(json["status"], "UP");
+        assert_eq!(json["uptime_seconds"], 86400);
+    }
+}

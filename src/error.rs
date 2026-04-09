@@ -84,3 +84,90 @@ impl IntoResponse for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    fn status_of(err: AppError) -> StatusCode {
+        err.into_response().status()
+    }
+
+    #[test]
+    fn not_found_returns_404() {
+        assert_eq!(
+            status_of(AppError::NotFound("x".into())),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn unauthorized_returns_401() {
+        assert_eq!(
+            status_of(AppError::Unauthorized("x".into())),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[test]
+    fn forbidden_returns_403() {
+        assert_eq!(
+            status_of(AppError::Forbidden("x".into())),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn bad_request_returns_400() {
+        assert_eq!(
+            status_of(AppError::BadRequest("x".into())),
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn conflict_returns_409() {
+        assert_eq!(
+            status_of(AppError::Conflict("x".into())),
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn service_unavailable_returns_503() {
+        assert_eq!(
+            status_of(AppError::ServiceUnavailable("x".into())),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn internal_returns_500() {
+        assert_eq!(
+            status_of(AppError::Internal("x".into())),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn anyhow_returns_500() {
+        assert_eq!(
+            status_of(AppError::Anyhow(anyhow::anyhow!("boom"))),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn error_response_body_has_success_false() {
+        let resp = AppError::NotFound("agent".into()).into_response();
+        let (_, body) = resp.into_parts();
+        let bytes = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { axum::body::to_bytes(body, usize::MAX).await.unwrap() });
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["success"], false);
+        assert_eq!(json["error"]["code"], "NOT_FOUND");
+    }
+}

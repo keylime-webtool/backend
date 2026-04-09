@@ -99,3 +99,83 @@ pub enum CorrelationType {
     Topological,
     PolicyLinked,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn critical_failure_types_map_to_critical_severity() {
+        assert_eq!(
+            FailureType::QuoteInvalid.default_severity(),
+            FailureSeverity::Critical
+        );
+        assert_eq!(
+            FailureType::PolicyViolation.default_severity(),
+            FailureSeverity::Critical
+        );
+        assert_eq!(
+            FailureType::EvidenceChainBroken.default_severity(),
+            FailureSeverity::Critical
+        );
+    }
+
+    #[test]
+    fn high_severity_failure_types() {
+        assert_eq!(
+            FailureType::BootViolation.default_severity(),
+            FailureSeverity::High
+        );
+        assert_eq!(
+            FailureType::Unknown.default_severity(),
+            FailureSeverity::High
+        );
+    }
+
+    #[test]
+    fn medium_severity_failure_types() {
+        assert_eq!(
+            FailureType::Timeout.default_severity(),
+            FailureSeverity::Medium
+        );
+        assert_eq!(
+            FailureType::PcrMismatch.default_severity(),
+            FailureSeverity::Medium
+        );
+    }
+
+    #[test]
+    fn low_severity_failure_types() {
+        assert_eq!(
+            FailureType::ClockSkew.default_severity(),
+            FailureSeverity::Low
+        );
+    }
+
+    #[test]
+    fn failure_type_serde_roundtrip() {
+        let ft = FailureType::EvidenceChainBroken;
+        let json = serde_json::to_string(&ft).unwrap();
+        assert_eq!(json, "\"EVIDENCE_CHAIN_BROKEN\"");
+        let deserialized: FailureType = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ft);
+    }
+
+    #[test]
+    fn pipeline_stage_serde_roundtrip() {
+        let stage = PipelineStage::ValidateTpmQuote;
+        let json = serde_json::to_string(&stage).unwrap();
+        assert_eq!(json, "\"validate_tpm_quote\"");
+        let deserialized: PipelineStage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, stage);
+    }
+
+    #[test]
+    fn correlation_type_serde_roundtrip() {
+        let ct = CorrelationType::Topological;
+        let json = serde_json::to_string(&ct).unwrap();
+        assert_eq!(json, "\"topological\"");
+        let deserialized: CorrelationType = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ct);
+    }
+}

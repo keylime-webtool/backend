@@ -60,6 +60,24 @@ pub struct Agent {
     pub regcount: u32,
 }
 
+impl AgentState {
+    /// Returns all valid agent states.
+    pub fn all() -> &'static [AgentState] {
+        &[
+            AgentState::Registered,
+            AgentState::Start,
+            AgentState::Saved,
+            AgentState::GetQuote,
+            AgentState::Retry,
+            AgentState::ProvideV,
+            AgentState::Failed,
+            AgentState::Terminated,
+            AgentState::InvalidQuote,
+            AgentState::TenantFailed,
+        ]
+    }
+}
+
 /// Agent summary for list views (FR-012).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSummary {
@@ -70,4 +88,55 @@ pub struct AgentSummary {
     pub last_attestation: Option<DateTime<Utc>>,
     pub assigned_policy: Option<String>,
     pub failure_count: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_states_are_detected() {
+        assert!(AgentState::Failed.is_failed());
+        assert!(AgentState::InvalidQuote.is_failed());
+        assert!(AgentState::TenantFailed.is_failed());
+    }
+
+    #[test]
+    fn non_failed_states_are_not_failed() {
+        let non_failed = [
+            AgentState::Registered,
+            AgentState::Start,
+            AgentState::Saved,
+            AgentState::GetQuote,
+            AgentState::Retry,
+            AgentState::ProvideV,
+            AgentState::Terminated,
+        ];
+        for state in non_failed {
+            assert!(!state.is_failed(), "{state:?} should not be failed");
+        }
+    }
+
+    #[test]
+    fn all_states_returns_all_variants() {
+        assert_eq!(AgentState::all().len(), 10);
+    }
+
+    #[test]
+    fn agent_state_serde_roundtrip() {
+        let state = AgentState::GetQuote;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"GET_QUOTE\"");
+        let deserialized: AgentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, state);
+    }
+
+    #[test]
+    fn attestation_mode_serde_roundtrip() {
+        let mode = AttestationMode::Push;
+        let json = serde_json::to_string(&mode).unwrap();
+        assert_eq!(json, "\"push\"");
+        let deserialized: AttestationMode = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, mode);
+    }
 }

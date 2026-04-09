@@ -69,3 +69,50 @@ pub enum DeliveryStatus {
     Failed,
     Retrying,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alert_severity_serde_roundtrip() {
+        let severity = AlertSeverity::Critical;
+        let json = serde_json::to_string(&severity).unwrap();
+        assert_eq!(json, "\"CRITICAL\"");
+        let deserialized: AlertSeverity = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, severity);
+    }
+
+    #[test]
+    fn alert_status_serde_roundtrip() {
+        let status = AlertStatus::UnderInvestigation;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"under_investigation\"");
+        let deserialized: AlertStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, status);
+    }
+
+    #[test]
+    fn notification_channel_serde_roundtrip() {
+        let channel = NotificationChannel::ZeroMq;
+        let json = serde_json::to_string(&channel).unwrap();
+        assert_eq!(json, "\"zero_mq\"");
+        let deserialized: NotificationChannel = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, channel);
+    }
+
+    #[test]
+    fn delivery_status_serde_roundtrip() {
+        for (status, expected) in [
+            (DeliveryStatus::Pending, "\"pending\""),
+            (DeliveryStatus::Sent, "\"sent\""),
+            (DeliveryStatus::Failed, "\"failed\""),
+            (DeliveryStatus::Retrying, "\"retrying\""),
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let deserialized: DeliveryStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, status);
+        }
+    }
+}

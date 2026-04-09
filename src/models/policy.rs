@@ -63,3 +63,56 @@ pub struct ImpactAnalysis {
     pub hashes_modified: u64,
     pub recommendation: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_kind_serde_roundtrip() {
+        for (kind, expected) in [
+            (PolicyKind::Ima, "\"ima\""),
+            (PolicyKind::MeasuredBoot, "\"measured_boot\""),
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(json, expected);
+            let deserialized: PolicyKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, kind);
+        }
+    }
+
+    #[test]
+    fn approval_status_serde_roundtrip() {
+        for (status, expected) in [
+            (ApprovalStatus::Draft, "\"draft\""),
+            (ApprovalStatus::PendingApproval, "\"pending_approval\""),
+            (ApprovalStatus::Approved, "\"approved\""),
+            (ApprovalStatus::Rejected, "\"rejected\""),
+            (ApprovalStatus::Expired, "\"expired\""),
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let deserialized: ApprovalStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, status);
+        }
+    }
+
+    #[test]
+    fn impact_analysis_serializes() {
+        let analysis = ImpactAnalysis {
+            policy_id: "pol-001".into(),
+            unaffected_agents: 90,
+            affected_agents: 10,
+            will_fail_agents: 2,
+            hashes_added: 5,
+            hashes_removed: 1,
+            hashes_modified: 3,
+            recommendation: "Review before applying".into(),
+        };
+        let json = serde_json::to_value(&analysis).unwrap();
+        assert_eq!(json["policy_id"], "pol-001");
+        assert_eq!(json["affected_agents"], 10);
+        assert_eq!(json["will_fail_agents"], 2);
+        assert_eq!(json["hashes_modified"], 3);
+    }
+}
