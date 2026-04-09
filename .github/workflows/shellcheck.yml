@@ -1,0 +1,28 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            scripts:
+              - '**/*.sh'
+      - uses: ludeeus/action-shellcheck@master
+        if: steps.changes.outputs.scripts == 'true'
+        with:
+          scandir: ./tests
+      - name: Skip (no shell script changes)
+        if: steps.changes.outputs.scripts != 'true'
+        run: echo "No shell script changes — skipping ShellCheck"
