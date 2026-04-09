@@ -63,3 +63,41 @@ pub struct RuntimePolicy {
     pub runtime_policy: Option<serde_json::Value>,
     pub runtime_policy_key: Option<String>,
 }
+
+/// PCR values response from Verifier API (FR-021/022).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PcrResults {
+    pub hash_alg: String,
+    pub pcrs: std::collections::HashMap<String, String>,
+}
+
+/// A single IMA log entry (FR-020).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImaLogEntry {
+    pub pcr: u8,
+    pub template_hash: String,
+    pub template_name: String,
+    pub filedata_hash: String,
+    pub filename: String,
+}
+
+/// IMA log response from Verifier API (FR-020).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImaLogResults {
+    pub entries: Vec<ImaLogEntry>,
+}
+
+/// A single measured boot log event (FR-020).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BootLogEntry {
+    pub pcr: u8,
+    pub event_type: String,
+    pub digest: String,
+    pub event_data: String,
+}
+
+/// Boot log response from Verifier API (FR-020).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BootLogResults {
+    pub entries: Vec<BootLogEntry>,
+}

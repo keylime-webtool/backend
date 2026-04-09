@@ -7,7 +7,8 @@ use crate::config::KeylimeConfig;
 use crate::error::{AppError, AppResult};
 
 use super::models::{
-    AgentListResults, RegistrarAgent, RuntimePolicy, VerifierAgent, VerifierResponse,
+    AgentListResults, BootLogResults, ImaLogResults, PcrResults, RegistrarAgent, RuntimePolicy,
+    VerifierAgent, VerifierResponse,
 };
 
 /// Circuit breaker states (NFR-017).
@@ -152,6 +153,78 @@ impl KeylimeClient {
         let result = self.get_json::<VerifierResponse<RuntimePolicy>>(&url).await;
         self.record_result(&result).await;
         Ok(result?.results)
+    }
+
+    /// GET /v2/agents/{agent_id}/pcrs -- PCR values (FR-021/022).
+    pub async fn get_agent_pcrs(&self, agent_id: &str) -> AppResult<PcrResults> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}/pcrs", self.verifier_url, agent_id);
+        let result = self.get_json::<VerifierResponse<PcrResults>>(&url).await;
+        self.record_result(&result).await;
+        Ok(result?.results)
+    }
+
+    /// GET /v2/agents/{agent_id}/ima -- IMA log entries (FR-020).
+    pub async fn get_agent_ima_log(&self, agent_id: &str) -> AppResult<ImaLogResults> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}/ima", self.verifier_url, agent_id);
+        let result = self.get_json::<VerifierResponse<ImaLogResults>>(&url).await;
+        self.record_result(&result).await;
+        Ok(result?.results)
+    }
+
+    /// GET /v2/agents/{agent_id}/boot-log -- boot log entries (FR-020).
+    pub async fn get_agent_boot_log(&self, agent_id: &str) -> AppResult<BootLogResults> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}/boot-log", self.verifier_url, agent_id);
+        let result = self
+            .get_json::<VerifierResponse<BootLogResults>>(&url)
+            .await;
+        self.record_result(&result).await;
+        Ok(result?.results)
+    }
+
+    /// DELETE /v2/agents/{agent_id} -- remove agent from verifier (FR-019).
+    pub async fn delete_agent(&self, agent_id: &str) -> AppResult<()> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
+        let resp = self.http.delete(&url).send().await?;
+        let ok = resp.status().is_success();
+        if ok {
+            self.verifier_circuit.record_success().await;
+        } else {
+            self.verifier_circuit.record_failure().await;
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::NotFound(format!(
+                "Keylime API returned {status}: {body}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// PUT /v2/agents/{agent_id} -- reactivate agent (FR-019).
+    pub async fn reactivate_agent(&self, agent_id: &str) -> AppResult<()> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
+        let resp = self
+            .http
+            .put(&url)
+            .json(&serde_json::json!({}))
+            .send()
+            .await?;
+        let ok = resp.status().is_success();
+        if ok {
+            self.verifier_circuit.record_success().await;
+        } else {
+            self.verifier_circuit.record_failure().await;
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::NotFound(format!(
+                "Keylime API returned {status}: {body}"
+            )));
+        }
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
