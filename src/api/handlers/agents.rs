@@ -152,9 +152,45 @@ pub struct SearchParams {
 
 /// GET /api/agents/search -- Global search (FR-004, FR-015 CIDR support).
 pub async fn search_agents(
-    Query(_params): Query<SearchParams>,
+    State(state): State<AppState>,
+    Query(params): Query<SearchParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
-    Err(AppError::Internal("not implemented".into()))
+    let q = params.q.to_lowercase();
+    let agent_ids = state.keylime.list_verifier_agents().await?;
+
+    let mut results = Vec::new();
+    for id_str in &agent_ids {
+        let agent = state.keylime.get_verifier_agent(id_str).await?;
+        let agent_state =
+            AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+
+        // Match against UUID, IP
+        let matches =
+            agent.agent_id.to_lowercase().contains(&q) || agent.ip.to_lowercase().contains(&q);
+
+        if matches {
+            let mode = if agent.operational_state == 5 {
+                AttestationMode::Push
+            } else {
+                AttestationMode::Pull
+            };
+
+            let uuid = Uuid::parse_str(&agent.agent_id)
+                .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+
+            results.push(AgentSummary {
+                id: uuid,
+                ip: agent.ip.clone(),
+                state: agent_state,
+                attestation_mode: mode,
+                last_attestation: None,
+                assigned_policy: agent.ima_policy.clone(),
+                failure_count: if agent_state.is_failed() { 1 } else { 0 },
+            });
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(results)))
 }
 
 /// POST /api/agents/:id/actions/:action -- Agent actions (FR-019).

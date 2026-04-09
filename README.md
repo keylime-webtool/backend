@@ -98,6 +98,21 @@ curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432 | jq
 
 # Fleet KPIs
 curl http://localhost:8080/api/kpis | jq
+
+# Search agents by UUID or IP
+curl "http://localhost:8080/api/agents/search?q=10.0.1" | jq
+
+# List all policies
+curl http://localhost:8080/api/policies | jq
+
+# Get a specific policy
+curl http://localhost:8080/api/policies/production-v1 | jq
+
+# Agent state distribution
+curl http://localhost:8080/api/attestations/state-machine | jq
+
+# Backend connectivity status (Verifier + Registrar health)
+curl http://localhost:8080/api/integrations/status | jq
 ```
 
 The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).

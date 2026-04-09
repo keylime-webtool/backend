@@ -1,12 +1,16 @@
-use axum::extract::{Path, Query};
+use std::collections::HashMap;
+
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::response::ApiResponse;
 use crate::error::{AppError, AppResult};
+use crate::models::agent::AgentState;
 use crate::models::attestation::{AttestationResult, CorrelatedIncident, PipelineResult};
 use crate::models::kpi::AttestationSummary;
+use crate::state::AppState;
 
 /// Query parameters for attestation analytics time range (FR-005).
 #[derive(Debug, Deserialize)]
@@ -72,6 +76,32 @@ pub async fn get_pull_mode_monitoring() -> AppResult<Json<ApiResponse<()>>> {
 }
 
 /// GET /api/attestations/state-machine -- Agent state distribution (FR-069).
-pub async fn get_state_machine() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn get_state_machine(
+    State(state): State<AppState>,
+) -> AppResult<Json<ApiResponse<HashMap<String, u64>>>> {
+    let agent_ids = state.keylime.list_verifier_agents().await?;
+
+    let mut distribution: HashMap<String, u64> = HashMap::new();
+    // Initialize all known states to 0
+    for s in AgentState::all() {
+        let name = serde_json::to_string(s)
+            .unwrap_or_default()
+            .trim_matches('"')
+            .to_string();
+        distribution.insert(name, 0);
+    }
+
+    for id_str in &agent_ids {
+        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+            if let Ok(agent_state) = AgentState::try_from(agent.operational_state) {
+                let name = serde_json::to_string(&agent_state)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string();
+                *distribution.entry(name).or_insert(0) += 1;
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(distribution)))
 }
