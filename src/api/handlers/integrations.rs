@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::Json;
 
 use crate::api::response::ApiResponse;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::models::kpi::{ServiceHealth, ServiceStatus};
 use crate::state::AppState;
 
@@ -56,16 +56,41 @@ pub async fn connectivity_status(
 }
 
 /// GET /api/integrations/durable -- Durable attestation backend status (FR-058).
-pub async fn durable_backends() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn durable_backends() -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "timescaledb": {
+            "status": "not_configured",
+            "note": "TimescaleDB integration pending",
+        },
+        "redis": {
+            "status": "not_configured",
+            "note": "Redis cache integration pending",
+        },
+    }))))
 }
 
 /// GET /api/integrations/revocation-channels -- Revocation channel monitoring (FR-046).
-pub async fn revocation_channels() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn revocation_channels() -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
+    // Return configured revocation channels (none yet)
+    Ok(Json(ApiResponse::ok(vec![
+        serde_json::json!({
+            "name": "zeromq",
+            "status": "not_configured",
+            "protocol": "ZeroMQ PUB/SUB",
+        }),
+        serde_json::json!({
+            "name": "webhook",
+            "status": "not_configured",
+            "protocol": "HTTPS POST",
+        }),
+    ])))
 }
 
 /// GET /api/integrations/siem -- SIEM integration status (FR-063).
-pub async fn siem_status() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn siem_status() -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "syslog_cef": { "status": "not_configured", "format": "CEF/LEEF" },
+        "splunk_hec": { "status": "not_configured", "format": "Splunk HEC JSON" },
+        "elastic": { "status": "not_configured", "format": "Elastic Common Schema" },
+    }))))
 }
