@@ -113,6 +113,23 @@ curl http://localhost:8080/api/attestations/state-machine | jq
 
 # Backend connectivity status (Verifier + Registrar health)
 curl http://localhost:8080/api/integrations/status | jq
+
+# Agent detail tabs (timeline, PCR, IMA, boot log, certs, raw)
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/timeline | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/pcr | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/ima-log | jq
+curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432/boot-log | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/certificates | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw | jq
+
+# Attestation analytics
+curl http://localhost:8080/api/attestations/summary | jq
+curl http://localhost:8080/api/attestations | jq
+curl http://localhost:8080/api/attestations/failures | jq
+
+# Verification pipeline for healthy vs failed agent
+curl http://localhost:8080/api/attestations/pipeline/d432fbb3-d2f1-4a97-9ef7-75bd81c00000 | jq
+curl http://localhost:8080/api/attestations/pipeline/a1b2c3d4-0000-1111-2222-333344445555 | jq
 ```
 
 The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).

@@ -259,16 +259,237 @@
       "responseMode": null,
       "streamingMode": null,
       "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-pcrs-001",
+      "type": "http",
+      "documentation": "PCR values for an agent (FR-021/022)",
+      "method": "get",
+      "endpoint": "v2/agents/:id/pcrs",
+      "responses": [
+        {
+          "uuid": "resp-agent-pcrs-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"hash_alg\": \"sha256\",\n    \"pcrs\": {\n      \"0\": \"a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1\",\n      \"1\": \"b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2\",\n      \"4\": \"c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3\",\n      \"7\": \"d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4\",\n      \"8\": \"e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5\",\n      \"10\": \"f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6\",\n      \"14\": \"0000000000000000000000000000000000000000000000000000000000000000\"\n    }\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Agent PCR values",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-ima-001",
+      "type": "http",
+      "documentation": "IMA log entries for an agent (FR-020)",
+      "method": "get",
+      "endpoint": "v2/agents/:id/ima",
+      "responses": [
+        {
+          "uuid": "resp-agent-ima-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"entries\": [\n      {\n        \"pcr\": 10,\n        \"template_hash\": \"f1d2d2f924e986ac86fdf7b36c94bcdf32beec15\",\n        \"template_name\": \"ima-ng\",\n        \"filedata_hash\": \"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\n        \"filename\": \"/usr/bin/bash\"\n      },\n      {\n        \"pcr\": 10,\n        \"template_hash\": \"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\n        \"template_name\": \"ima-ng\",\n        \"filedata_hash\": \"sha256:6c5e0e3f68b0e6e5a87e13f1e39a5f8b5e6c7d8e9f0a1b2c3d4e5f6a7b8c9d0\",\n        \"filename\": \"/usr/lib64/ld-linux-x86-64.so.2\"\n      },\n      {\n        \"pcr\": 10,\n        \"template_hash\": \"d8e8fca2dc0f896fd7cb4cb0031ba249a8b5c6d7\",\n        \"template_name\": \"ima-ng\",\n        \"filedata_hash\": \"sha256:abc123def456789012345678901234567890123456789012345678901234abcd\",\n        \"filename\": \"/usr/lib64/libc.so.6\"\n      },\n      {\n        \"pcr\": 10,\n        \"template_hash\": \"7c211433f02024a5b5903e18c120f3b06e7f8a9b\",\n        \"template_name\": \"ima-ng\",\n        \"filedata_hash\": \"sha256:def456abc789012345678901234567890123456789012345678901234567ef01\",\n        \"filename\": \"/usr/sbin/sshd\"\n      },\n      {\n        \"pcr\": 10,\n        \"template_hash\": \"b14a7b8059d9c055954c92674ce6003211223344\",\n        \"template_name\": \"ima-ng\",\n        \"filedata_hash\": \"sha256:789012345678901234567890123456789012345678901234567890123456ab01\",\n        \"filename\": \"/usr/bin/python3.11\"\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Agent IMA log",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-bootlog-001",
+      "type": "http",
+      "documentation": "Measured boot log for an agent (FR-020)",
+      "method": "get",
+      "endpoint": "v2/agents/:id/boot-log",
+      "responses": [
+        {
+          "uuid": "resp-agent-bootlog-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"entries\": [\n      {\n        \"pcr\": 0,\n        \"event_type\": \"EV_S_CRTM_VERSION\",\n        \"digest\": \"sha256:a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1\",\n        \"event_data\": \"UEFI Platform Firmware 2.7\"\n      },\n      {\n        \"pcr\": 0,\n        \"event_type\": \"EV_EFI_PLATFORM_FIRMWARE_BLOB\",\n        \"digest\": \"sha256:b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2\",\n        \"event_data\": \"FirmwareBlob: base=0x00000000 size=0x00100000\"\n      },\n      {\n        \"pcr\": 7,\n        \"event_type\": \"EV_EFI_VARIABLE_DRIVER_CONFIG\",\n        \"digest\": \"sha256:c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3\",\n        \"event_data\": \"SecureBoot: enabled\"\n      },\n      {\n        \"pcr\": 4,\n        \"event_type\": \"EV_EFI_BOOT_SERVICES_APPLICATION\",\n        \"digest\": \"sha256:d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4\",\n        \"event_data\": \"\\\\EFI\\\\BOOT\\\\BOOTX64.EFI\"\n      },\n      {\n        \"pcr\": 8,\n        \"event_type\": \"EV_EFI_BOOT_SERVICES_APPLICATION\",\n        \"digest\": \"sha256:e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5\",\n        \"event_data\": \"grub2: kernel vmlinuz-6.1.0\"\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Agent boot log",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-delete-001",
+      "type": "http",
+      "documentation": "Delete an agent from verifier (FR-019)",
+      "method": "delete",
+      "endpoint": "v2/agents/:id",
+      "responses": [
+        {
+          "uuid": "resp-agent-delete-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {}\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Delete agent",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-reactivate-001",
+      "type": "http",
+      "documentation": "Reactivate an agent (FR-019)",
+      "method": "put",
+      "endpoint": "v2/agents/:id",
+      "responses": [
+        {
+          "uuid": "resp-agent-reactivate-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {}\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Reactivate/update agent",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
     }
   ],
   "rootChildren": [
-    { "type": "route", "uuid": "route-list-agents-001" },
-    { "type": "route", "uuid": "route-agent-healthy-001" },
-    { "type": "route", "uuid": "route-agent-failed-001" },
-    { "type": "route", "uuid": "route-agent-push-001" },
-    { "type": "route", "uuid": "route-agent-notfound-001" },
-    { "type": "route", "uuid": "route-list-policies-001" },
-    { "type": "route", "uuid": "route-get-policy-001" }
+    {
+      "type": "route",
+      "uuid": "route-list-agents-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-healthy-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-failed-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-push-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-notfound-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-list-policies-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-get-policy-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-pcrs-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-ima-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-bootlog-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-delete-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-agent-reactivate-001"
+    }
   ],
   "proxyMode": false,
   "proxyHost": "",
@@ -284,12 +505,31 @@
   },
   "cors": true,
   "headers": [
-    { "key": "Access-Control-Allow-Origin", "value": "*" },
-    { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS" },
-    { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With" }
+    {
+      "key": "Access-Control-Allow-Origin",
+      "value": "*"
+    },
+    {
+      "key": "Access-Control-Allow-Methods",
+      "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS"
+    },
+    {
+      "key": "Access-Control-Allow-Headers",
+      "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With"
+    }
   ],
-  "proxyReqHeaders": [{ "key": "", "value": "" }],
-  "proxyResHeaders": [{ "key": "", "value": "" }],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
   "data": [],
   "callbacks": []
 }
