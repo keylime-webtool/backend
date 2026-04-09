@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -16,23 +16,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+    - uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          rust:
+            - '**/*.rs'
+            - '**/Cargo.toml'
+            - '**/Cargo.lock'
     - name: Check formatting
+      if: steps.changes.outputs.rust == 'true'
       run: cargo fmt --all -- --check
+    - name: Skip (no Rust changes)
+      if: steps.changes.outputs.rust != 'true'
+      run: echo "No Rust source changes — skipping formatting check"
 
   clippy:
     name: Clippy lints
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+    - uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          rust:
+            - '**/*.rs'
+            - '**/Cargo.toml'
+            - '**/Cargo.lock'
     - name: Run clippy
+      if: steps.changes.outputs.rust == 'true'
       run: cargo clippy -- -D warnings
+    - name: Skip (no Rust changes)
+      if: steps.changes.outputs.rust != 'true'
+      run: echo "No Rust source changes — skipping clippy lints"
 
   tests:
     name: Tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
+    - uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          rust:
+            - '**/*.rs'
+            - '**/Cargo.toml'
+            - '**/Cargo.lock'
     - name: Build
+      if: steps.changes.outputs.rust == 'true'
       run: cargo build
     - name: Run tests
+      if: steps.changes.outputs.rust == 'true'
       run: cargo test
+    - name: Skip (no Rust changes)
+      if: steps.changes.outputs.rust != 'true'
+      run: echo "No Rust source changes — skipping tests"

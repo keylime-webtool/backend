@@ -122,6 +122,39 @@ run_test() {
     fi
 }
 
+# Run a POST test case (empty body).
+run_post_test() {
+    local name="$1"
+    local url="$2"
+    local filter="${3:-.success}"
+    local expected="${4:-true}"
+
+    TOTAL=$((TOTAL + 1))
+    printf "  %-55s " "${name}"
+
+    local response
+    response=$(curl -sf -X POST "${BACKEND_URL}${url}" 2>&1) || {
+        red "FAIL (HTTP error)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    local actual
+    actual=$(echo "$response" | jq -r "$filter" 2>/dev/null) || {
+        red "FAIL (invalid JSON)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    if [ "$actual" = "$expected" ]; then
+        green "PASS"
+        PASSED=$((PASSED + 1))
+    else
+        red "FAIL (expected '${expected}', got '${actual}')"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 # ── main ─────────────────────────────────────────────────────────────────
 
 MOCKOON_VERIFIER_PID=""
@@ -190,6 +223,9 @@ echo "  Policies"
 echo "  --------"
 run_test "List all policies"            "/api/policies"
 run_test "Get specific policy"          "/api/policies/production-v1"
+run_test "Policy assignment matrix"     "/api/policies/assignment-matrix"
+run_post_test "Impact analysis (production-v1)" \
+    "/api/policies/production-v1/impact"
 echo ""
 
 # -- Attestation endpoints --
@@ -203,12 +239,41 @@ run_test "Verification pipeline (healthy)" \
     "/api/attestations/pipeline/${HEALTHY_ID}"
 run_test "Verification pipeline (failed)" \
     "/api/attestations/pipeline/${FAILED_ID}"
+run_test "Push mode analytics"          "/api/attestations/push-mode"
+run_test "Pull mode monitoring"         "/api/attestations/pull-mode"
+echo ""
+
+# -- Certificate endpoints --
+echo "  Certificates"
+echo "  ------------"
+run_test "List certificates"            "/api/certificates"
+run_test "Certificate expiry summary"   "/api/certificates/expiry"
 echo ""
 
 # -- Integration endpoints --
 echo "  Integrations"
 echo "  ------------"
 run_test "Backend connectivity status"  "/api/integrations/status"
+run_test "Durable backends"             "/api/integrations/durable"
+run_test "Revocation channels"          "/api/integrations/revocation-channels"
+run_test "SIEM status"                  "/api/integrations/siem"
+echo ""
+
+# -- Performance endpoints --
+echo "  Performance"
+echo "  -----------"
+run_test "Verifier metrics"             "/api/performance/verifiers"
+run_test "Database metrics"             "/api/performance/database"
+run_test "API response times"           "/api/performance/api-response-times"
+run_test "Config drift"                 "/api/performance/config"
+run_test "Capacity planning"            "/api/performance/capacity"
+echo ""
+
+# -- Compliance endpoints --
+echo "  Compliance"
+echo "  ----------"
+run_test "List frameworks"              "/api/compliance/frameworks"
+run_test "Compliance report (NIST)"     "/api/compliance/reports/nist-sp-800-155"
 echo ""
 
 # 4. Summary

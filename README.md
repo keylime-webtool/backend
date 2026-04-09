@@ -130,6 +130,34 @@ curl http://localhost:8080/api/attestations/failures | jq
 # Verification pipeline for healthy vs failed agent
 curl http://localhost:8080/api/attestations/pipeline/d432fbb3-d2f1-4a97-9ef7-75bd81c00000 | jq
 curl http://localhost:8080/api/attestations/pipeline/a1b2c3d4-0000-1111-2222-333344445555 | jq
+
+# Push/pull mode analytics
+curl http://localhost:8080/api/attestations/push-mode | jq
+curl http://localhost:8080/api/attestations/pull-mode | jq
+
+# Policy assignment matrix and impact analysis
+curl http://localhost:8080/api/policies/assignment-matrix | jq
+curl -X POST http://localhost:8080/api/policies/production-v1/impact | jq
+
+# Certificates
+curl http://localhost:8080/api/certificates | jq
+curl http://localhost:8080/api/certificates/expiry | jq
+
+# Performance
+curl http://localhost:8080/api/performance/verifiers | jq
+curl http://localhost:8080/api/performance/database | jq
+curl http://localhost:8080/api/performance/api-response-times | jq
+curl http://localhost:8080/api/performance/config | jq
+curl http://localhost:8080/api/performance/capacity | jq
+
+# Compliance
+curl http://localhost:8080/api/compliance/frameworks | jq
+curl http://localhost:8080/api/compliance/reports/nist-sp-800-155 | jq
+
+# Integrations (durable, revocation, SIEM)
+curl http://localhost:8080/api/integrations/durable | jq
+curl http://localhost:8080/api/integrations/revocation-channels | jq
+curl http://localhost:8080/api/integrations/siem | jq
 ```
 
 The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).

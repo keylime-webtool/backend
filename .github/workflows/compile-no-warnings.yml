@@ -16,11 +16,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            rust:
+              - '**/*.rs'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
       - name: Check compilation (no warnings)
+        if: steps.changes.outputs.rust == 'true'
         run: RUSTFLAGS="-D warnings" cargo build
       - name: Check test compilation (no warnings)
+        if: steps.changes.outputs.rust == 'true'
         run: RUSTFLAGS="-D warnings" cargo test
       - name: Check clippy errors (no warnings included)
+        if: steps.changes.outputs.rust == 'true'
         run: cargo clippy --all-features --all-targets  -- -D clippy::all -D warnings
       - name: Check clippy test errors (no warnings included)
+        if: steps.changes.outputs.rust == 'true'
         run: cargo clippy --all-features --all-targets --tests -- -D clippy::all -D warnings
+      - name: Skip (no Rust changes)
+        if: steps.changes.outputs.rust != 'true'
+        run: echo "No Rust source changes — skipping compilation checks"

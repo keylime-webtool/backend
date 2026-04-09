@@ -226,8 +226,38 @@ pub struct BulkActionRequest {
     pub action: String,
 }
 
-pub async fn bulk_action(Json(_body): Json<BulkActionRequest>) -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn bulk_action(
+    State(state): State<AppState>,
+    Json(body): Json<BulkActionRequest>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let mut succeeded = 0u64;
+    let mut failed = 0u64;
+
+    for id in &body.agent_ids {
+        let id_str = id.to_string();
+        let result = match body.action.as_str() {
+            "reactivate" => state.keylime.reactivate_agent(&id_str).await,
+            "delete" => state.keylime.delete_agent(&id_str).await,
+            "stop" => state.keylime.reactivate_agent(&id_str).await,
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "unknown action: {}. Valid actions: reactivate, delete, stop",
+                    body.action
+                )));
+            }
+        };
+        match result {
+            Ok(()) => succeeded += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "action": body.action,
+        "total": body.agent_ids.len(),
+        "succeeded": succeeded,
+        "failed": failed,
+    }))))
 }
 
 /// GET /api/agents/:id/timeline -- Attestation timeline (FR-020).

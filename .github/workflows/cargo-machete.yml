@@ -1,10 +1,10 @@
 name: Check unused dependencies
 
 on:
+  push:
+    branches: [main]
   pull_request:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -13,4 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            cargo:
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
       - uses: bnjbvr/cargo-machete@main
+        if: steps.changes.outputs.cargo == 'true'
+      - name: Skip (no dependency changes)
+        if: steps.changes.outputs.cargo != 'true'
+        run: echo "No Cargo.toml/Cargo.lock changes — skipping unused dependency check"

@@ -210,13 +210,57 @@ pub async fn get_pipeline(
 }
 
 /// GET /api/attestations/push-mode -- Push mode analytics (FR-029).
-pub async fn get_push_mode_analytics() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn get_push_mode_analytics(
+    State(state): State<AppState>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let mut push_agents = Vec::new();
+
+    for id_str in &agent_ids {
+        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+            // PROVIDE_V (state=5) indicates push mode
+            if agent.operational_state == 5 {
+                push_agents.push(serde_json::json!({
+                    "agent_id": agent.agent_id,
+                    "ip": agent.ip,
+                    "state": "PROVIDE_V",
+                }));
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "total_push_agents": push_agents.len(),
+        "agents": push_agents,
+    }))))
 }
 
 /// GET /api/attestations/pull-mode -- Pull mode monitoring (FR-054).
-pub async fn get_pull_mode_monitoring() -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn get_pull_mode_monitoring(
+    State(state): State<AppState>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let mut pull_agents = Vec::new();
+
+    for id_str in &agent_ids {
+        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+            if agent.operational_state != 5 {
+                let state_name = AgentState::try_from(agent.operational_state)
+                    .map(|s| format!("{s:?}"))
+                    .unwrap_or_else(|_| format!("unknown({})", agent.operational_state));
+                pull_agents.push(serde_json::json!({
+                    "agent_id": agent.agent_id,
+                    "ip": agent.ip,
+                    "state": state_name,
+                }));
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "total_pull_agents": pull_agents.len(),
+        "agents": pull_agents,
+    }))))
 }
 
 /// GET /api/attestations/state-machine -- Agent state distribution (FR-069).
