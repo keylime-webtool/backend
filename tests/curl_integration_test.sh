@@ -55,6 +55,7 @@ TOTAL=0
 
 green()  { printf '\033[0;32m%s\033[0m\n' "$*"; }
 red()    { printf '\033[0;31m%s\033[0m\n' "$*"; }
+# shellcheck disable=SC2329  # invoked indirectly (available for future tests)
 yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
 
 start_mockoon_server() {
@@ -109,6 +110,7 @@ wait_for_backend() {
     exit 1
 }
 
+# shellcheck disable=SC2329  # invoked via trap
 cleanup() {
     if [ "$NO_MOCKS" = true ]; then
         return

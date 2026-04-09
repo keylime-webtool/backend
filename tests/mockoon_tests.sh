@@ -51,6 +51,7 @@ start_mockoon_server() {
     exit 1
 }
 
+# shellcheck disable=SC2329  # invoked via trap
 cleanup() {
     echo "-------- Cleaning up Mockoon servers"
     [ -n "${MOCKOON_VERIFIER_PID:-}" ] && kill "$MOCKOON_VERIFIER_PID" 2>/dev/null || true
