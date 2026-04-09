@@ -24,13 +24,32 @@ The full SRS (69 FRs, 23 NFRs, 29 SRs with Gherkin acceptance criteria) lives in
 ```bash
 cargo build              # dev build
 cargo build --release    # release build
-cargo test               # run all tests
+cargo test               # run all unit tests
 cargo test <test_name>   # run a single test
 cargo clippy -- -D warnings   # lint (treat warnings as errors)
 cargo fmt                # format code
 cargo fmt -- --check     # check formatting without modifying
 cargo run                # run dev server
 ```
+
+## Mockoon Integration Tests
+
+Integration tests use [Mockoon](https://mockoon.com/) to simulate Keylime Verifier (port 3000) and Registrar (port 3001) APIs. Mock data is in `test-data/`.
+
+```bash
+# Automated: starts mocks, runs tests, cleans up
+bash tests/mockoon_tests.sh
+
+# Manual: start mocks, then run tests with the mockoon feature flag
+mockoon-cli start --data test-data/verifier.json --port 3000 &
+mockoon-cli start --data test-data/registrar.json --port 3001 &
+MOCKOON_VERIFIER=1 MOCKOON_REGISTRAR=1 cargo test --features mockoon test_mockoon -- --nocapture
+pkill -f mockoon-cli
+```
+
+The mock fleet has 3 agents: healthy (GET_QUOTE), failed (FAILED), and push-mode (PROVIDE_V). Tests are gated behind `#[cfg(feature = "mockoon")]` and env vars `MOCKOON_VERIFIER`/`MOCKOON_REGISTRAR`.
+
+Alternatively, open `test-data/verifier.json` and `test-data/registrar.json` in the Mockoon desktop app, start both environments, then run the tests from a terminal. The GUI shows live request logs for debugging.
 
 ## Architecture
 

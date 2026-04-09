@@ -1,0 +1,52 @@
+---
+name: Mockoon Integration Tests
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mockoon-verifier-tests:
+    name: Verifier mock tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install mockoon-cli
+        run: npm install -g @mockoon/cli
+      - name: Start Verifier mock (port 3000)
+        run: |
+          mockoon-cli start --data test-data/verifier.json --port 3000 &
+          for i in $(seq 1 15); do
+            curl -s --connect-timeout 1 http://localhost:3000 > /dev/null && break
+            sleep 1
+          done
+      - name: Run Verifier integration tests
+        run: MOCKOON_VERIFIER=1 cargo test --features mockoon test_mockoon_verifier -- --nocapture
+
+  mockoon-registrar-tests:
+    name: Registrar mock tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install mockoon-cli
+        run: npm install -g @mockoon/cli
+      - name: Start Registrar mock (port 3001)
+        run: |
+          mockoon-cli start --data test-data/registrar.json --port 3001 &
+          for i in $(seq 1 15); do
+            curl -s --connect-timeout 1 http://localhost:3001 > /dev/null && break
+            sleep 1
+          done
+      - name: Run Registrar integration tests
+        run: MOCKOON_REGISTRAR=1 cargo test --features mockoon test_mockoon_registrar -- --nocapture

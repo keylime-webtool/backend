@@ -1,0 +1,206 @@
+{
+  "uuid": "b1a2c3d4-0002-4000-8000-000000000002",
+  "lastMigration": 33,
+  "name": "Keylime Registrar Mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3001,
+  "hostname": "",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "route-reg-version-001",
+      "type": "http",
+      "documentation": "Registrar API version endpoint",
+      "method": "get",
+      "endpoint": "version",
+      "responses": [
+        {
+          "uuid": "resp-reg-version-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"current_version\": \"2.1\",\n    \"supported_versions\": [\"2.0\", \"2.1\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "API version response",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-reg-list-agents-001",
+      "type": "http",
+      "documentation": "List all registered agents",
+      "method": "get",
+      "endpoint": "v2/agents/",
+      "responses": [
+        {
+          "uuid": "resp-reg-list-agents-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n      \"a1b2c3d4-0000-1111-2222-333344445555\",\n      \"f7e6d5c4-b3a2-9180-7654-321098765432\"\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "List registered agent UUIDs",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-reg-agent-healthy-001",
+      "type": "http",
+      "documentation": "Registration data for healthy agent",
+      "method": "get",
+      "endpoint": "v2/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000",
+      "responses": [
+        {
+          "uuid": "resp-reg-agent-healthy-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF4eHlGdFE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFrYWlrWHE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"ip\": \"10.0.1.10\",\n    \"port\": 9002,\n    \"regcount\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Healthy agent registration data",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-reg-agent-failed-001",
+      "type": "http",
+      "documentation": "Registration data for failed agent",
+      "method": "get",
+      "endpoint": "v2/agents/a1b2c3d4-0000-1111-2222-333344445555",
+      "responses": [
+        {
+          "uuid": "resp-reg-agent-failed-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"a1b2c3d4-0000-1111-2222-333344445555\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWVrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWFpay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n    \"ip\": \"10.0.1.20\",\n    \"port\": 9002,\n    \"regcount\": 3\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Failed agent registration data",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-reg-agent-push-001",
+      "type": "http",
+      "documentation": "Registration data for push-mode agent",
+      "method": "get",
+      "endpoint": "v2/agents/f7e6d5c4-b3a2-9180-7654-321098765432",
+      "responses": [
+        {
+          "uuid": "resp-reg-agent-push-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"f7e6d5c4-b3a2-9180-7654-321098765432\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1lay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1haWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n    \"ip\": \"10.0.1.30\",\n    \"port\": 9002,\n    \"regcount\": 1\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Push-mode agent registration data",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "route-reg-version-001" },
+    { "type": "route", "uuid": "route-reg-list-agents-001" },
+    { "type": "route", "uuid": "route-reg-agent-healthy-001" },
+    { "type": "route", "uuid": "route-reg-agent-failed-001" },
+    { "type": "route", "uuid": "route-reg-agent-push-001" }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    { "key": "Access-Control-Allow-Origin", "value": "*" },
+    { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS" },
+    { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With" }
+  ],
+  "proxyReqHeaders": [{ "key": "", "value": "" }],
+  "proxyResHeaders": [{ "key": "", "value": "" }],
+  "data": [],
+  "callbacks": []
+}

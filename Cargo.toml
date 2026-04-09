@@ -52,6 +52,30 @@ url = "2"
 # Configuration
 config = "0.14"
 
+[package.metadata.cargo-machete]
+# These dependencies are used by scaffolded modules with todo!() stubs.
+# Remove entries from this list as each module gets implemented.
+ignored = [
+    "axum-extra",
+    "config",
+    "hyper",
+    "ipnet",
+    "metrics",
+    "metrics-exporter-prometheus",
+    "openidconnect",
+    "opentelemetry",
+    "rustls",
+    "rustls-pki-types",
+    "tokio-rustls",
+    "tower",
+    "tower-http",
+    "url",
+]
+
+[features]
+mockoon = []
+
 [dev-dependencies]
 tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }
+reqwest = { version = "0.12", features = ["json"] }

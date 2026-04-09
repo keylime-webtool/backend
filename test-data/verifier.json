@@ -1,0 +1,295 @@
+{
+  "uuid": "b1a2c3d4-0001-4000-8000-000000000001",
+  "lastMigration": 33,
+  "name": "Keylime Verifier Mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3000,
+  "hostname": "",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "route-list-agents-001",
+      "type": "http",
+      "documentation": "List all agents from Verifier v2 API",
+      "method": "get",
+      "endpoint": "v2/agents/",
+      "responses": [
+        {
+          "uuid": "resp-list-agents-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n      \"a1b2c3d4-0000-1111-2222-333344445555\",\n      \"f7e6d5c4-b3a2-9180-7654-321098765432\"\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "List all agent UUIDs",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-healthy-001",
+      "type": "http",
+      "documentation": "Agent detail - healthy agent in GET_QUOTE state",
+      "method": "get",
+      "endpoint": "v2/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000",
+      "responses": [
+        {
+          "uuid": "resp-agent-healthy-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n    \"ip\": \"10.0.1.10\",\n    \"port\": 9002,\n    \"operational_state\": 3,\n    \"v\": \"ek_handle_001\",\n    \"tpm_policy\": \"{\\\"mask\\\": \\\"0x408000\\\"}\",\n    \"ima_policy\": \"production-v1\",\n    \"mb_policy\": null,\n    \"hash_alg\": \"sha256\",\n    \"enc_alg\": \"rsa\",\n    \"sign_alg\": \"rsassa\",\n    \"ima_pcrs\": [10],\n    \"accept_tpm_hash_algs\": [\"sha256\", \"sha384\"],\n    \"accept_tpm_encryption_algs\": [\"rsa\"],\n    \"accept_tpm_signing_algs\": [\"rsassa\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Healthy agent (GET_QUOTE state=3)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-failed-001",
+      "type": "http",
+      "documentation": "Agent detail - failed agent",
+      "method": "get",
+      "endpoint": "v2/agents/a1b2c3d4-0000-1111-2222-333344445555",
+      "responses": [
+        {
+          "uuid": "resp-agent-failed-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"a1b2c3d4-0000-1111-2222-333344445555\",\n    \"ip\": \"10.0.1.20\",\n    \"port\": 9002,\n    \"operational_state\": 7,\n    \"v\": \"ek_handle_002\",\n    \"tpm_policy\": \"{\\\"mask\\\": \\\"0x408000\\\"}\",\n    \"ima_policy\": \"production-v1\",\n    \"mb_policy\": null,\n    \"hash_alg\": \"sha256\",\n    \"enc_alg\": \"rsa\",\n    \"sign_alg\": \"rsassa\",\n    \"ima_pcrs\": [10],\n    \"accept_tpm_hash_algs\": [\"sha256\"],\n    \"accept_tpm_encryption_algs\": [\"rsa\"],\n    \"accept_tpm_signing_algs\": [\"rsassa\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Failed agent (FAILED state=7)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-push-001",
+      "type": "http",
+      "documentation": "Agent detail - push-mode agent in PROVIDE_V state",
+      "method": "get",
+      "endpoint": "v2/agents/f7e6d5c4-b3a2-9180-7654-321098765432",
+      "responses": [
+        {
+          "uuid": "resp-agent-push-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"f7e6d5c4-b3a2-9180-7654-321098765432\",\n    \"ip\": \"10.0.1.30\",\n    \"port\": 9002,\n    \"operational_state\": 5,\n    \"v\": \"ek_handle_003\",\n    \"tpm_policy\": \"{\\\"mask\\\": \\\"0x408000\\\"}\",\n    \"ima_policy\": \"staging-v2\",\n    \"mb_policy\": \"measured-boot-v1\",\n    \"hash_alg\": \"sha384\",\n    \"enc_alg\": \"rsa\",\n    \"sign_alg\": \"rsassa\",\n    \"ima_pcrs\": [10, 14],\n    \"accept_tpm_hash_algs\": [\"sha256\", \"sha384\", \"sha512\"],\n    \"accept_tpm_encryption_algs\": [\"rsa\", \"ecc\"],\n    \"accept_tpm_signing_algs\": [\"rsassa\", \"ecdsa\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Push-mode agent (PROVIDE_V state=5)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-agent-notfound-001",
+      "type": "http",
+      "documentation": "Agent detail - unknown agent returns 404",
+      "method": "get",
+      "endpoint": "v2/agents/00000000-0000-0000-0000-000000000000",
+      "responses": [
+        {
+          "uuid": "resp-agent-notfound-001",
+          "body": "{\n  \"code\": 404,\n  \"status\": \"Agent not found\",\n  \"results\": {}\n}",
+          "latency": 0,
+          "statusCode": 404,
+          "label": "Agent not found",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-list-policies-001",
+      "type": "http",
+      "documentation": "List runtime policies (allowlists)",
+      "method": "get",
+      "endpoint": "v2/allowlists/",
+      "responses": [
+        {
+          "uuid": "resp-list-policies-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"policy_names\": [\"production-v1\", \"staging-v2\", \"measured-boot-v1\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "List policy names",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "route-get-policy-001",
+      "type": "http",
+      "documentation": "Get a specific runtime policy",
+      "method": "get",
+      "endpoint": "v2/allowlists/:name",
+      "responses": [
+        {
+          "uuid": "resp-get-policy-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"name\": \"production-v1\",\n    \"tpm_policy\": {\"mask\": \"0x408000\"},\n    \"runtime_policy\": {\"digests\": {}, \"excludes\": [], \"keyrings\": {}},\n    \"runtime_policy_key\": null\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Get policy detail",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "route-list-agents-001" },
+    { "type": "route", "uuid": "route-agent-healthy-001" },
+    { "type": "route", "uuid": "route-agent-failed-001" },
+    { "type": "route", "uuid": "route-agent-push-001" },
+    { "type": "route", "uuid": "route-agent-notfound-001" },
+    { "type": "route", "uuid": "route-list-policies-001" },
+    { "type": "route", "uuid": "route-get-policy-001" }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    { "key": "Access-Control-Allow-Origin", "value": "*" },
+    { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS" },
+    { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With" }
+  ],
+  "proxyReqHeaders": [{ "key": "", "value": "" }],
+  "proxyResHeaders": [{ "key": "", "value": "" }],
+  "data": [],
+  "callbacks": []
+}
