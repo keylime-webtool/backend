@@ -1,26 +1,29 @@
 name: Security audit
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     tags:
       - "v*"
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
   pull_request:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
+    branches: [main]
   workflow_dispatch:
-    branches:
-      - main
 
 jobs:
   security_audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            cargo:
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
       - uses: actions-rs/audit-check@v1
+        if: steps.changes.outputs.cargo == 'true'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Skip (no dependency changes)
+        if: steps.changes.outputs.cargo != 'true'
+        run: echo "No Cargo.toml/Cargo.lock changes — skipping security audit"
