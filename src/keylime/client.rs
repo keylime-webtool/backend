@@ -4,7 +4,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::config::KeylimeConfig;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+
+use super::models::{
+    AgentListResults, RegistrarAgent, RuntimePolicy, VerifierAgent, VerifierResponse,
+};
 
 /// Circuit breaker states (NFR-017).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,7 +72,9 @@ impl CircuitBreaker {
 ///
 /// NFR-023: Maximum 5 parallel concurrent log fetches to Verifier API.
 pub struct KeylimeClient {
-    _config: KeylimeConfig,
+    verifier_url: String,
+    registrar_url: String,
+    http: reqwest::Client,
     verifier_circuit: Arc<CircuitBreaker>,
     _log_fetch_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -83,8 +89,17 @@ impl KeylimeClient {
         // NFR-023: limit concurrent log fetches
         let log_fetch_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.timeout_secs))
+            .build()
+            .map_err(|e| AppError::Internal(format!("failed to build HTTP client: {e}")))?;
+
+        // TODO: when config.mtls is Some, build mTLS client with certs
+
         Ok(Self {
-            _config: config,
+            verifier_url: config.verifier_url,
+            registrar_url: config.registrar_url,
+            http,
             verifier_circuit,
             _log_fetch_semaphore: log_fetch_semaphore,
         })
@@ -95,17 +110,116 @@ impl KeylimeClient {
         self.verifier_circuit.state().await != CircuitState::Open
     }
 
-    // TODO: Implement mTLS HTTP client setup via rustls
-    // TODO: GET /v2/agents/ -- list agents (pull mode)
-    // TODO: GET /v2/agents/{agent_id} -- agent detail
-    // TODO: GET /v3/agents/ -- list agents (push mode)
-    // TODO: GET /v2/allowlists/ -- list IMA policies
-    // TODO: POST /v2/allowlists/ -- create IMA policy
-    // TODO: Registrar API: GET /v2/agents/ -- registration data
+    // -----------------------------------------------------------------------
+    // Verifier API methods
+    // -----------------------------------------------------------------------
+
+    /// GET /v2/agents/ -- list agent IDs from the Verifier.
+    pub async fn list_verifier_agents(&self) -> AppResult<Vec<String>> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/", self.verifier_url);
+        let result = self
+            .get_json::<VerifierResponse<AgentListResults>>(&url)
+            .await;
+        self.record_result(&result).await;
+        Ok(result?.results.uuids)
+    }
+
+    /// GET /v2/agents/{agent_id} -- agent detail from the Verifier.
+    pub async fn get_verifier_agent(&self, agent_id: &str) -> AppResult<VerifierAgent> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
+        let result = self.get_json::<VerifierResponse<VerifierAgent>>(&url).await;
+        self.record_result(&result).await;
+        Ok(result?.results)
+    }
+
+    /// GET /v2/allowlists/ -- list policy names from the Verifier.
+    pub async fn list_policies(&self) -> AppResult<Vec<String>> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/allowlists/", self.verifier_url);
+        let result = self
+            .get_json::<VerifierResponse<PolicyListResults>>(&url)
+            .await;
+        self.record_result(&result).await;
+        Ok(result?.results.policy_names)
+    }
+
+    /// GET /v2/allowlists/{name} -- policy detail from the Verifier.
+    pub async fn get_policy(&self, name: &str) -> AppResult<RuntimePolicy> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/allowlists/{}", self.verifier_url, name);
+        let result = self.get_json::<VerifierResponse<RuntimePolicy>>(&url).await;
+        self.record_result(&result).await;
+        Ok(result?.results)
+    }
+
+    // -----------------------------------------------------------------------
+    // Registrar API methods
+    // -----------------------------------------------------------------------
+
+    /// GET /v2/agents/ -- list registered agent IDs from the Registrar.
+    pub async fn list_registrar_agents(&self) -> AppResult<Vec<String>> {
+        let url = format!("{}/v2/agents/", self.registrar_url);
+        let resp = self
+            .get_json::<VerifierResponse<AgentListResults>>(&url)
+            .await?;
+        Ok(resp.results.uuids)
+    }
+
+    /// GET /v2/agents/{agent_id} -- agent registration data from the Registrar.
+    pub async fn get_registrar_agent(&self, agent_id: &str) -> AppResult<RegistrarAgent> {
+        let url = format!("{}/v2/agents/{}", self.registrar_url, agent_id);
+        let resp = self
+            .get_json::<VerifierResponse<RegistrarAgent>>(&url)
+            .await?;
+        Ok(resp.results)
+    }
+
+    // -----------------------------------------------------------------------
+    // Internal helpers
+    // -----------------------------------------------------------------------
+
+    async fn get_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> AppResult<T> {
+        let resp = self.http.get(url).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::NotFound(format!(
+                "Keylime API returned {status}: {body}"
+            )));
+        }
+        Ok(resp.json::<T>().await?)
+    }
+
+    async fn check_circuit(&self) -> AppResult<()> {
+        if self.verifier_circuit.state().await == CircuitState::Open {
+            return Err(AppError::ServiceUnavailable(
+                "Verifier API circuit breaker is open".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn record_result<T>(&self, result: &AppResult<T>) {
+        match result {
+            Ok(_) => self.verifier_circuit.record_success().await,
+            Err(_) => self.verifier_circuit.record_failure().await,
+        }
+    }
+}
+
+/// Policy list results from Verifier `GET /v2/allowlists/`.
+#[derive(Debug, serde::Deserialize)]
+struct PolicyListResults {
+    policy_names: Vec<String>,
 }
 
 impl std::fmt::Debug for KeylimeClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KeylimeClient").finish_non_exhaustive()
+        f.debug_struct("KeylimeClient")
+            .field("verifier_url", &self.verifier_url)
+            .field("registrar_url", &self.registrar_url)
+            .finish_non_exhaustive()
     }
 }

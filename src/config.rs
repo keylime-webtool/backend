@@ -28,7 +28,7 @@ pub struct ServerConfig {
 pub struct KeylimeConfig {
     pub verifier_url: String,
     pub registrar_url: String,
-    pub mtls: MtlsConfig,
+    pub mtls: Option<MtlsConfig>,
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
     #[serde(default)]

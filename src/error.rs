@@ -35,6 +35,9 @@ pub enum AppError {
     #[error(transparent)]
     Jwt(#[from] jsonwebtoken::errors::Error),
 
+    #[error("keylime API error: {0}")]
+    KeylimeApi(#[from] reqwest::Error),
+
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
 }
@@ -63,6 +66,7 @@ impl IntoResponse for AppError {
             AppError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE")
             }
+            AppError::KeylimeApi(_) => (StatusCode::BAD_GATEWAY, "KEYLIME_API_ERROR"),
             AppError::Internal(_) | AppError::Anyhow(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
             }

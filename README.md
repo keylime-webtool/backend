@@ -69,6 +69,39 @@ MOCKOON_REGISTRAR=1 cargo test --features mockoon test_mockoon_registrar -- --no
    ```
 4. The Mockoon GUI will show each request in its log panel, letting you inspect request/response details, headers, and timing in real time
 
+**Manual testing with curl:**
+
+Start both Mockoon mocks and the backend, then use `curl` to test the API:
+
+```bash
+# Terminal 1: start the Verifier mock
+mockoon-cli start --data test-data/verifier.json --port 3000
+
+# Terminal 2: start the Registrar mock
+mockoon-cli start --data test-data/registrar.json --port 3001
+
+# Terminal 3: start the backend (defaults to localhost:3000/3001)
+RUST_LOG=info cargo run
+
+# Terminal 4: query the API
+# List all agents
+curl http://localhost:8080/api/agents | jq
+
+# Get a specific agent (healthy agent)
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000 | jq
+
+# Get a failed agent
+curl http://localhost:8080/api/agents/a1b2c3d4-0000-1111-2222-333344445555 | jq
+
+# Get a push-mode agent
+curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432 | jq
+
+# Fleet KPIs
+curl http://localhost:8080/api/kpis | jq
+```
+
+The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).
+
 ### Mock fleet
 
 The mock data defines a fleet of 3 agents in different states:

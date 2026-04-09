@@ -1,11 +1,12 @@
-use axum::extract::{Path, Query};
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::response::{ApiResponse, PaginatedResponse};
-use crate::error::AppResult;
-use crate::models::agent::{Agent, AgentSummary};
+use crate::error::{AppError, AppResult};
+use crate::models::agent::{AgentState, AgentSummary, AttestationMode};
+use crate::state::AppState;
 
 /// Query parameters for agent list filtering (FR-014).
 #[derive(Debug, Deserialize)]
@@ -23,16 +24,124 @@ pub struct AgentListParams {
 
 /// GET /api/agents -- Paginated, filterable agent list (FR-012, FR-013, FR-014).
 pub async fn list_agents(
-    Query(_params): Query<AgentListParams>,
+    State(state): State<AppState>,
+    Query(params): Query<AgentListParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AgentSummary>>>> {
-    // TODO: query Verifier API + cache, apply filters, paginate
-    todo!()
+    // Fetch agent UUIDs from Verifier
+    let agent_ids = state.keylime.list_verifier_agents().await?;
+
+    // Fetch detail for each agent to build summaries
+    let mut summaries = Vec::new();
+    for id_str in &agent_ids {
+        let agent = state.keylime.get_verifier_agent(id_str).await?;
+        let agent_state =
+            AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+
+        let mode = if agent.operational_state == 5 {
+            AttestationMode::Push
+        } else {
+            AttestationMode::Pull
+        };
+
+        let uuid = Uuid::parse_str(&agent.agent_id)
+            .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+
+        summaries.push(AgentSummary {
+            id: uuid,
+            ip: agent.ip.clone(),
+            state: agent_state,
+            attestation_mode: mode,
+            last_attestation: None,
+            assigned_policy: agent.ima_policy.clone(),
+            failure_count: if agent_state.is_failed() { 1 } else { 0 },
+        });
+    }
+
+    // Apply filters
+    if let Some(ref state_filter) = params.state {
+        let filter_upper = state_filter.to_uppercase();
+        summaries.retain(|s| {
+            let state_str = serde_json::to_string(&s.state).unwrap_or_default();
+            let state_str = state_str.trim_matches('"');
+            state_str == filter_upper
+        });
+    }
+    if let Some(ref ip_filter) = params.ip {
+        summaries.retain(|s| s.ip.contains(ip_filter));
+    }
+    if let Some(ref uuid_filter) = params.uuid {
+        summaries.retain(|s| s.id.to_string().starts_with(uuid_filter));
+    }
+
+    // Pagination
+    let page = params.page.unwrap_or(1).max(1);
+    let page_size = params.page_size.unwrap_or(20).min(100);
+    let total_items = summaries.len() as u64;
+    let total_pages = (total_items + page_size - 1) / page_size.max(1);
+    let start = ((page - 1) * page_size) as usize;
+    let items: Vec<AgentSummary> = summaries
+        .into_iter()
+        .skip(start)
+        .take(page_size as usize)
+        .collect();
+
+    Ok(Json(ApiResponse::ok(PaginatedResponse {
+        items,
+        page,
+        page_size,
+        total_items,
+        total_pages,
+    })))
 }
 
 /// GET /api/agents/:id -- Agent detail view (FR-018).
-pub async fn get_agent(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<Agent>>> {
-    // TODO: fetch agent detail from Verifier + Registrar
-    todo!()
+pub async fn get_agent(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+
+    // Fetch from both Verifier and Registrar
+    let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
+
+    let agent_state =
+        AgentState::try_from(verifier_agent.operational_state).map_err(AppError::Internal)?;
+
+    let mode = if verifier_agent.operational_state == 5 {
+        AttestationMode::Push
+    } else {
+        AttestationMode::Pull
+    };
+
+    // Build a combined JSON response with data from both sources
+    let mut combined = serde_json::json!({
+        "id": id_str,
+        "ip": verifier_agent.ip,
+        "port": verifier_agent.port,
+        "state": agent_state,
+        "attestation_mode": mode,
+        "hash_alg": verifier_agent.hash_alg,
+        "enc_alg": verifier_agent.enc_alg,
+        "sign_alg": verifier_agent.sign_alg,
+        "ima_pcrs": verifier_agent.ima_pcrs,
+        "ima_policy": verifier_agent.ima_policy,
+        "mb_policy": verifier_agent.mb_policy,
+        "tpm_policy": verifier_agent.tpm_policy,
+        "accept_tpm_hash_algs": verifier_agent.accept_tpm_hash_algs,
+        "accept_tpm_encryption_algs": verifier_agent.accept_tpm_encryption_algs,
+        "accept_tpm_signing_algs": verifier_agent.accept_tpm_signing_algs,
+    });
+
+    if let Some(reg) = registrar_agent {
+        if let Some(obj) = combined.as_object_mut() {
+            obj.insert("ek_tpm".into(), serde_json::json!(reg.ek_tpm));
+            obj.insert("aik_tpm".into(), serde_json::json!(reg.aik_tpm));
+            obj.insert("regcount".into(), serde_json::json!(reg.regcount));
+        }
+    }
+
+    Ok(Json(ApiResponse::ok(combined)))
 }
 
 /// Global agent search by UUID, IP, or hostname (FR-004).
@@ -45,16 +154,14 @@ pub struct SearchParams {
 pub async fn search_agents(
     Query(_params): Query<SearchParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
-    // TODO: search by UUID prefix, IP, CIDR range, hostname
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// POST /api/agents/:id/actions/:action -- Agent actions (FR-019).
 pub async fn agent_action(
     Path((_id, _action)): Path<(Uuid, String)>,
 ) -> AppResult<Json<ApiResponse<()>>> {
-    // TODO: reactivate, stop, delete, force_attest
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// POST /api/agents/bulk -- Bulk operations on selected agents (FR-016).
@@ -65,36 +172,35 @@ pub struct BulkActionRequest {
 }
 
 pub async fn bulk_action(Json(_body): Json<BulkActionRequest>) -> AppResult<Json<ApiResponse<()>>> {
-    // TODO: execute bulk operations, return partial success/failure summary
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/timeline -- Attestation timeline (FR-020).
 pub async fn get_timeline(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/pcr -- PCR values (FR-021, FR-022).
 pub async fn get_pcr_values(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/ima-log -- IMA log entries (FR-020).
 pub async fn get_ima_log(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/boot-log -- Boot log entries (FR-020).
 pub async fn get_boot_log(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/certificates -- Agent certificates (FR-020).
 pub async fn get_agent_certs(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/agents/:id/raw -- Raw JSON agent record (FR-020).
 pub async fn get_raw_data(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }

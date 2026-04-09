@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+/// Agent list results from Verifier/Registrar `GET /v2/agents/`.
+#[derive(Debug, Deserialize)]
+pub struct AgentListResults {
+    pub uuids: Vec<String>,
+}
+
 /// Raw agent data as returned by the Keylime Verifier v2 API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifierAgent {

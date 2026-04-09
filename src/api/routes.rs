@@ -1,19 +1,22 @@
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 
+use crate::state::AppState;
+
 use super::handlers;
 use super::ws;
 
 /// Build the complete API router with all route groups.
-pub fn build_router() -> Router {
+pub fn build_router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api_routes())
         .route("/ws/events", get(ws::ws_handler))
-    // TODO: GET /metrics -- Prometheus metrics endpoint (FR-063)
-    // TODO: add CORS, tracing, rate limiting layers
+        // TODO: GET /metrics -- Prometheus metrics endpoint (FR-063)
+        // TODO: add CORS, tracing, rate limiting layers
+        .with_state(state)
 }
 
-fn api_routes() -> Router {
+fn api_routes() -> Router<AppState> {
     Router::new()
         .nest("/auth", auth_routes())
         .nest("/kpis", kpi_routes())
@@ -28,7 +31,7 @@ fn api_routes() -> Router {
         .nest("/performance", performance_routes())
 }
 
-fn auth_routes() -> Router {
+fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/login", post(handlers::auth::login))
         .route("/callback", post(handlers::auth::callback))
@@ -36,11 +39,11 @@ fn auth_routes() -> Router {
         .route("/logout", post(handlers::auth::logout))
 }
 
-fn kpi_routes() -> Router {
+fn kpi_routes() -> Router<AppState> {
     Router::new().route("/", get(handlers::kpis::get_kpis))
 }
 
-fn agent_routes() -> Router {
+fn agent_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::agents::list_agents))
         .route("/search", get(handlers::agents::search_agents))
@@ -58,7 +61,7 @@ fn agent_routes() -> Router {
         .route("/{id}/raw", get(handlers::agents::get_raw_data))
 }
 
-fn attestation_routes() -> Router {
+fn attestation_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::attestations::list_attestations))
         .route("/summary", get(handlers::attestations::get_summary))
@@ -87,7 +90,7 @@ fn attestation_routes() -> Router {
         )
 }
 
-fn policy_routes() -> Router {
+fn policy_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::policies::list_policies))
         .route("/", post(handlers::policies::create_policy))
@@ -111,7 +114,7 @@ fn policy_routes() -> Router {
         .route("/{id}/impact", post(handlers::policies::impact_analysis))
 }
 
-fn certificate_routes() -> Router {
+fn certificate_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::certificates::list_certificates))
         .route("/expiry", get(handlers::certificates::expiry_summary))
@@ -122,7 +125,7 @@ fn certificate_routes() -> Router {
         )
 }
 
-fn alert_routes() -> Router {
+fn alert_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::alerts::list_alerts))
         .route("/thresholds", put(handlers::alerts::update_thresholds))
@@ -139,14 +142,14 @@ fn alert_routes() -> Router {
         .route("/{id}/dismiss", post(handlers::alerts::dismiss_alert))
 }
 
-fn audit_routes() -> Router {
+fn audit_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::audit::list_audit_events))
         .route("/verify", get(handlers::audit::verify_chain))
         .route("/export", get(handlers::audit::export_audit_log))
 }
 
-fn compliance_routes() -> Router {
+fn compliance_routes() -> Router<AppState> {
     Router::new()
         .route("/frameworks", get(handlers::compliance::list_frameworks))
         .route(
@@ -159,7 +162,7 @@ fn compliance_routes() -> Router {
         )
 }
 
-fn integration_routes() -> Router {
+fn integration_routes() -> Router<AppState> {
     Router::new()
         .route("/status", get(handlers::integrations::connectivity_status))
         .route("/durable", get(handlers::integrations::durable_backends))
@@ -170,7 +173,7 @@ fn integration_routes() -> Router {
         .route("/siem", get(handlers::integrations::siem_status))
 }
 
-fn performance_routes() -> Router {
+fn performance_routes() -> Router<AppState> {
     Router::new()
         .route("/verifiers", get(handlers::performance::verifier_metrics))
         .route("/database", get(handlers::performance::database_metrics))

@@ -2,12 +2,11 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::api::response::ApiResponse;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// POST /api/auth/login -- Initiate OIDC login flow (SR-001).
 pub async fn login() -> AppResult<Json<ApiResponse<LoginResponse>>> {
-    // TODO: return OIDC authorization URL for redirect
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -26,8 +25,7 @@ pub struct CallbackParams {
 pub async fn callback(
     Json(_params): Json<CallbackParams>,
 ) -> AppResult<Json<ApiResponse<TokenResponse>>> {
-    // TODO: exchange code, create JWT, return token
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -38,11 +36,10 @@ pub struct TokenResponse {
 
 /// POST /api/auth/refresh -- Refresh JWT (SR-010).
 pub async fn refresh_token() -> AppResult<Json<ApiResponse<TokenResponse>>> {
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }
 
 /// POST /api/auth/logout -- Revoke session (SR-011).
 pub async fn logout() -> AppResult<Json<ApiResponse<()>>> {
-    // TODO: revoke session in SessionStore
-    todo!()
+    Err(AppError::Internal("not implemented".into()))
 }

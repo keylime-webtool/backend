@@ -28,6 +28,26 @@ impl AgentState {
     }
 }
 
+impl TryFrom<i32> for AgentState {
+    type Error = String;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(AgentState::Registered),
+            1 => Ok(AgentState::Start),
+            2 => Ok(AgentState::Saved),
+            3 => Ok(AgentState::GetQuote),
+            4 => Ok(AgentState::Retry),
+            5 => Ok(AgentState::ProvideV),
+            7 => Ok(AgentState::Failed),
+            8 => Ok(AgentState::Terminated),
+            9 => Ok(AgentState::InvalidQuote),
+            10 => Ok(AgentState::TenantFailed),
+            _ => Err(format!("unknown operational_state: {value}")),
+        }
+    }
+}
+
 /// Attestation mode the agent operates in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -39,6 +39,9 @@ opentelemetry = "0.27"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
+# HTTP client (for Keylime API calls)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Utilities
 anyhow = "1"
 thiserror = "2"
