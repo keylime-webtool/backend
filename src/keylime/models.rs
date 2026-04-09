@@ -1,0 +1,59 @@
+use serde::{Deserialize, Serialize};
+
+/// Raw agent data as returned by the Keylime Verifier v2 API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifierAgent {
+    pub agent_id: String,
+    pub ip: String,
+    pub port: u16,
+    pub operational_state: i32,
+    pub v: Option<String>,
+    pub tpm_policy: Option<String>,
+    pub ima_policy: Option<String>,
+    pub mb_policy: Option<String>,
+    pub hash_alg: String,
+    pub enc_alg: String,
+    pub sign_alg: String,
+    pub ima_pcrs: Vec<u8>,
+    pub accept_tpm_hash_algs: Vec<String>,
+    pub accept_tpm_encryption_algs: Vec<String>,
+    pub accept_tpm_signing_algs: Vec<String>,
+}
+
+/// Raw agent data from the Keylime Registrar API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistrarAgent {
+    pub agent_id: String,
+    pub ek_tpm: String,
+    pub aik_tpm: String,
+    pub ip: String,
+    pub port: u16,
+    pub regcount: u32,
+}
+
+/// Verifier API response wrapper.
+#[derive(Debug, Deserialize)]
+pub struct VerifierResponse<T> {
+    pub code: i32,
+    pub status: String,
+    pub results: T,
+}
+
+/// Push-mode (v3) attestation evidence submission.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushEvidence {
+    pub agent_id: String,
+    pub nonce: String,
+    pub quote: String,
+    pub ima_log: Option<String>,
+    pub boot_log: Option<String>,
+}
+
+/// Keylime runtime policy (allowlist) as stored in the Verifier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimePolicy {
+    pub name: String,
+    pub tpm_policy: Option<serde_json::Value>,
+    pub runtime_policy: Option<serde_json::Value>,
+    pub runtime_policy_key: Option<String>,
+}

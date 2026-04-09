@@ -1,0 +1,19 @@
+# cargo-audit configuration
+# https://docs.rs/cargo-audit/latest/cargo_audit/
+
+[advisories]
+
+# RUSTSEC-2023-0071: rsa crate Marvin Attack (timing sidechannel in PKCS#1 v1.5 decryption)
+#
+# Accepted because:
+# 1. The vulnerable codepath is PKCS#1 v1.5 *decryption*. This project does not
+#    perform RSA decryption — rsa is a transitive dependency only.
+# 2. Via openidconnect: used for JWT signature *verification*, which is not
+#    affected by the Marvin Attack timing sidechannel.
+# 3. Via sqlx-mysql (resolved but not activated): sqlx is configured with
+#    default-features = false and only the postgres driver is enabled.
+#    sqlx-mysql is not compiled or linked.
+# 4. No fixed rsa version is available upstream.
+#
+# Re-evaluate when a patched rsa release is published.
+ignore = ["RUSTSEC-2023-0071"]

@@ -1,0 +1,57 @@
+[package]
+name = "keylime-webtool-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Backend for the Keylime Monitoring Dashboard"
+license = "Apache-2.0"
+rust-version = "1.75"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "set-header"] }
+hyper = { version = "1", features = ["full"] }
+
+# TLS & Security
+rustls = "0.23"
+tokio-rustls = "0.26"
+rustls-pki-types = "1.9"
+
+# Database
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+redis = { version = "0.27", features = ["aio", "tokio-comp"] }
+
+# Authentication
+openidconnect = "4"
+jsonwebtoken = "9"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging & Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+opentelemetry = "0.27"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Utilities
+anyhow = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+hex = "0.4"
+ipnet = "2"
+url = "2"
+
+# Configuration
+config = "0.14"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tower = { version = "0.5", features = ["util"] }
