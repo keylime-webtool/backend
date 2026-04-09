@@ -3,15 +3,49 @@
 #
 # End-to-end integration test: starts Mockoon mocks + backend, then runs
 # every curl command documented in README.md and validates the responses.
+#
+# Usage:
+#   bash tests/curl_integration_test.sh              # full: start mocks + backend + test
+#   bash tests/curl_integration_test.sh --url http://myhost:8080
+#   bash tests/curl_integration_test.sh --no-mocks   # test only against already-running services
+#   bash tests/curl_integration_test.sh --no-mocks --url http://myhost:8080
 
 set -euo pipefail
 
 GIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# ── option parsing ──────────────────────────────────────────────────────
+
+NO_MOCKS=false
+BACKEND_URL="http://localhost:8080"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-mocks)
+            NO_MOCKS=true
+            shift
+            ;;
+        --url)
+            BACKEND_URL="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--no-mocks] [--url URL]"
+            echo ""
+            echo "  --no-mocks  Skip starting Mockoon mocks and backend; test against"
+            echo "              already-running services (Mockoon desktop, real deployment, etc.)"
+            echo "  --url URL   Backend base URL (default: http://localhost:8080)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1 (use --help for usage)"
+            exit 1
+            ;;
+    esac
+done
+
 VERIFIER_PORT=3000
 REGISTRAR_PORT=3001
-BACKEND_PORT=8080
-BACKEND_URL="http://localhost:${BACKEND_PORT}"
 
 PASSED=0
 FAILED=0
@@ -63,7 +97,7 @@ start_mockoon_server() {
 }
 
 wait_for_backend() {
-    echo "-------- Waiting for backend on port ${BACKEND_PORT}..."
+    echo "-------- Waiting for backend at ${BACKEND_URL}..."
     for _ in $(seq 1 30); do
         if curl -s --connect-timeout 1 "${BACKEND_URL}/api/kpis" > /dev/null 2>&1; then
             echo "Backend is up"
@@ -76,6 +110,9 @@ wait_for_backend() {
 }
 
 cleanup() {
+    if [ "$NO_MOCKS" = true ]; then
+        return
+    fi
     echo ""
     echo "-------- Cleaning up"
     [ -n "${BACKEND_PID:-}" ]           && kill "$BACKEND_PID" 2>/dev/null || true
@@ -162,22 +199,27 @@ MOCKOON_REGISTRAR_PID=""
 BACKEND_PID=""
 
 echo "======== Keylime Webtool Backend – curl integration tests ========"
+if [ "$NO_MOCKS" = true ]; then
+    echo "  Mode: --no-mocks (testing against ${BACKEND_URL})"
+fi
 echo ""
 
-# 1. Start Mockoon mocks
-start_mockoon_server "VERIFIER"  "${GIT_ROOT}/test-data/verifier.json"  "$VERIFIER_PORT"
-start_mockoon_server "REGISTRAR" "${GIT_ROOT}/test-data/registrar.json" "$REGISTRAR_PORT"
+if [ "$NO_MOCKS" = false ]; then
+    # 1. Start Mockoon mocks
+    start_mockoon_server "VERIFIER"  "${GIT_ROOT}/test-data/verifier.json"  "$VERIFIER_PORT"
+    start_mockoon_server "REGISTRAR" "${GIT_ROOT}/test-data/registrar.json" "$REGISTRAR_PORT"
 
-# 2. Build and start the backend
-echo "-------- Building backend"
-cd "$GIT_ROOT"
-cargo build --quiet 2>&1
+    # 2. Build and start the backend
+    echo "-------- Building backend"
+    cd "$GIT_ROOT"
+    cargo build --quiet 2>&1
 
-echo "-------- Starting backend"
-RUST_LOG=info cargo run --quiet &
-BACKEND_PID=$!
+    echo "-------- Starting backend"
+    RUST_LOG=info cargo run --quiet &
+    BACKEND_PID=$!
 
-wait_for_backend
+    wait_for_backend
+fi
 
 # 3. Run tests
 echo ""
