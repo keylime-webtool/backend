@@ -54,6 +54,7 @@ pub async fn list_agents(
             attestation_mode: mode,
             last_attestation: None,
             assigned_policy: agent.ima_policy.clone(),
+            mb_policy: agent.mb_policy.clone(),
             failure_count: if agent_state.is_failed() { 1 } else { 0 },
         });
     }
@@ -192,6 +193,7 @@ pub async fn search_agents(
                 attestation_mode: mode,
                 last_attestation: None,
                 assigned_policy: agent.ima_policy.clone(),
+                mb_policy: agent.mb_policy.clone(),
                 failure_count: if agent_state.is_failed() { 1 } else { 0 },
             });
         }
