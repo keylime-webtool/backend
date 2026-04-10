@@ -135,6 +135,7 @@ pub struct AgentSummary {
     pub attestation_mode: AttestationMode,
     pub last_attestation: Option<DateTime<Utc>>,
     pub assigned_policy: Option<String>,
+    pub mb_policy: Option<String>,
     pub failure_count: u32,
 }
 
