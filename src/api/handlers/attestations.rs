@@ -33,10 +33,13 @@ pub async fn get_summary(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            if let Ok(agent_state) = AgentState::try_from(agent.operational_state) {
-                if agent_state.is_failed() {
-                    failed += 1;
-                }
+            let agent_state = if agent.accept_attestations.is_some() {
+                AgentState::from_push_agent(&agent)
+            } else {
+                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+            };
+            if agent_state.is_failed() {
+                failed += 1;
             }
         }
     }
@@ -67,8 +70,12 @@ pub async fn list_attestations(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            let agent_state = AgentState::try_from(agent.operational_state).ok();
-            let is_failed = agent_state.map(|s| s.is_failed()).unwrap_or(false);
+            let agent_state = if agent.accept_attestations.is_some() {
+                AgentState::from_push_agent(&agent)
+            } else {
+                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+            };
+            let is_failed = agent_state.is_failed();
 
             if let Ok(uuid) = Uuid::parse_str(&agent.agent_id) {
                 results.push(AttestationResult {
@@ -106,22 +113,25 @@ pub async fn get_failures(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            if let Ok(agent_state) = AgentState::try_from(agent.operational_state) {
-                if agent_state.is_failed() {
-                    let failure_type = match agent_state {
-                        AgentState::InvalidQuote => "QUOTE_INVALID",
-                        AgentState::TenantFailed => "POLICY_VIOLATION",
-                        _ => "UNKNOWN",
-                    };
-                    failures.push(serde_json::json!({
-                        "agent_id": agent.agent_id,
-                        "failure_type": failure_type,
-                        "severity": "CRITICAL",
-                        "timestamp": chrono::Utc::now(),
-                        "detail": format!("Agent in {} state (operational_state={})",
-                            failure_type, agent.operational_state),
-                    }));
-                }
+            let agent_state = if agent.accept_attestations.is_some() {
+                AgentState::from_push_agent(&agent)
+            } else {
+                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+            };
+            if agent_state.is_failed() {
+                let failure_type = match agent_state {
+                    AgentState::InvalidQuote => "QUOTE_INVALID",
+                    AgentState::TenantFailed => "POLICY_VIOLATION",
+                    AgentState::Fail => "ATTESTATION_TIMEOUT",
+                    _ => "UNKNOWN",
+                };
+                failures.push(serde_json::json!({
+                    "agent_id": agent.agent_id,
+                    "failure_type": failure_type,
+                    "severity": "CRITICAL",
+                    "timestamp": chrono::Utc::now(),
+                    "detail": format!("Agent in {:?} state", agent_state),
+                }));
             }
         }
     }
@@ -153,7 +163,11 @@ pub async fn get_pipeline(
 ) -> AppResult<Json<ApiResponse<Vec<PipelineResult>>>> {
     let id_str = agent_id.to_string();
     let agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let agent_state = AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+    let agent_state = if agent.accept_attestations.is_some() {
+        AgentState::from_push_agent(&agent)
+    } else {
+        AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+    };
 
     let is_failed = agent_state.is_failed();
 
@@ -244,14 +258,13 @@ pub async fn get_pull_mode_monitoring(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            if agent.operational_state != 5 {
-                let state_name = AgentState::try_from(agent.operational_state)
-                    .map(|s| format!("{s:?}"))
-                    .unwrap_or_else(|_| format!("unknown({})", agent.operational_state));
+            if agent.accept_attestations.is_none() {
+                let agent_state =
+                    AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed);
                 pull_agents.push(serde_json::json!({
                     "agent_id": agent.agent_id,
                     "ip": agent.ip,
-                    "state": state_name,
+                    "state": agent_state,
                 }));
             }
         }
@@ -281,7 +294,12 @@ pub async fn get_state_machine(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            if let Ok(agent_state) = AgentState::try_from(agent.operational_state) {
+            let agent_state = if agent.accept_attestations.is_some() {
+                AgentState::from_push_agent(&agent)
+            } else {
+                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+            };
+            {
                 let name = serde_json::to_string(&agent_state)
                     .unwrap_or_default()
                     .trim_matches('"')

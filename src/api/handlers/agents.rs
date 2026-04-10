@@ -274,7 +274,11 @@ pub async fn get_timeline(
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
     let agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let agent_state = AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+    let agent_state = if agent.accept_attestations.is_some() {
+        AgentState::from_push_agent(&agent)
+    } else {
+        AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+    };
 
     // Generate synthetic timeline events based on agent state
     let now = chrono::Utc::now();
