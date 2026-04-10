@@ -232,12 +232,44 @@ echo ""
 echo "  Agents"
 echo "  ------"
 run_test "List all agents"              "/api/agents"
+run_test "  list contains push agent with PASS state" \
+    "/api/agents" \
+    '[.data.items[] | select(.id == "f7e6d5c4-b3a2-9180-7654-321098765432") | .state] | .[0]' "PASS"
+run_test "  list contains push agent with Push mode" \
+    "/api/agents" \
+    '[.data.items[] | select(.id == "f7e6d5c4-b3a2-9180-7654-321098765432") | .attestation_mode] | .[0]' "Push"
 run_test "Get healthy agent (GET_QUOTE)" \
     "/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+run_test "  state = GET_QUOTE"          \
+    "/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000" \
+    ".data.state" "GET_QUOTE"
+run_test "  mode = Pull"                \
+    "/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000" \
+    ".data.attestation_mode" "Pull"
 run_test "Get failed agent (FAILED)"    \
     "/api/agents/a1b2c3d4-0000-1111-2222-333344445555"
-run_test "Get push-mode agent (PROVIDE_V)" \
+run_test "  state = FAILED"             \
+    "/api/agents/a1b2c3d4-0000-1111-2222-333344445555" \
+    ".data.state" "FAILED"
+run_test "  mode = Pull"                \
+    "/api/agents/a1b2c3d4-0000-1111-2222-333344445555" \
+    ".data.attestation_mode" "Pull"
+run_test "Get push-mode agent (PASS)"   \
     "/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432"
+run_test "  state = PASS"               \
+    "/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432" \
+    ".data.state" "PASS"
+run_test "  mode = Push"                \
+    "/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432" \
+    ".data.attestation_mode" "Push"
+run_test "Get failed push-mode agent (FAIL)" \
+    "/api/agents/b2c3d4e5-a1b0-8765-4321-fedcba987654"
+run_test "  state = FAIL"               \
+    "/api/agents/b2c3d4e5-a1b0-8765-4321-fedcba987654" \
+    ".data.state" "FAIL"
+run_test "  mode = Push"                \
+    "/api/agents/b2c3d4e5-a1b0-8765-4321-fedcba987654" \
+    ".data.attestation_mode" "Push"
 run_test "Search agents by IP"          "/api/agents/search?q=10.0.1"
 echo ""
 
@@ -247,6 +279,7 @@ echo "  -----------------"
 HEALTHY_ID="d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
 FAILED_ID="a1b2c3d4-0000-1111-2222-333344445555"
 PUSH_ID="f7e6d5c4-b3a2-9180-7654-321098765432"
+PUSH_FAILED_ID="b2c3d4e5-a1b0-8765-4321-fedcba987654"
 run_test "Timeline (healthy)"           "/api/agents/${HEALTHY_ID}/timeline"
 run_test "Timeline (failed)"            "/api/agents/${FAILED_ID}/timeline"
 run_test "PCR values"                   "/api/agents/${HEALTHY_ID}/pcr"
@@ -254,6 +287,7 @@ run_test "IMA log"                      "/api/agents/${HEALTHY_ID}/ima-log"
 run_test "Boot log"                     "/api/agents/${PUSH_ID}/boot-log"
 run_test "Certificates"                 "/api/agents/${HEALTHY_ID}/certificates"
 run_test "Raw data"                     "/api/agents/${HEALTHY_ID}/raw"
+run_test "Raw data (push failed)"       "/api/agents/${PUSH_FAILED_ID}/raw"
 echo ""
 
 # -- KPI endpoint --

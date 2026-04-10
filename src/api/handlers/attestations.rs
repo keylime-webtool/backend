@@ -218,12 +218,12 @@ pub async fn get_push_mode_analytics(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
-            // PROVIDE_V (state=5) indicates push mode
-            if agent.operational_state == 5 {
+            if agent.accept_attestations.is_some() {
+                let push_state = crate::models::agent::AgentState::from_push_agent(&agent);
                 push_agents.push(serde_json::json!({
                     "agent_id": agent.agent_id,
                     "ip": agent.ip,
-                    "state": "PROVIDE_V",
+                    "state": push_state,
                 }));
             }
         }

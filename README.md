@@ -87,14 +87,17 @@ RUST_LOG=info cargo run
 # List all agents
 curl http://localhost:8080/api/agents | jq
 
-# Get a specific agent (healthy agent)
+# Get a specific agent (Pull mode, GET_QUOTE state)
 curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000 | jq
 
-# Get a failed agent
+# Get a failed agent (Pull mode, FAILED state)
 curl http://localhost:8080/api/agents/a1b2c3d4-0000-1111-2222-333344445555 | jq
 
-# Get a push-mode agent
+# Get a push-mode agent (Push mode, PASS state)
 curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432 | jq
+
+# Get a failed push-mode agent (Push mode, FAIL state)
+curl http://localhost:8080/api/agents/b2c3d4e5-a1b0-8765-4321-fedcba987654 | jq
 
 # Fleet KPIs
 curl http://localhost:8080/api/kpis | jq
@@ -166,11 +169,12 @@ The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment
 
 The mock data defines a fleet of 3 agents in different states:
 
-| Agent UUID | Verifier State | Description |
-|-----------|---------------|-------------|
-| `d432fbb3-d2f1-4a97-9ef7-75bd81c00000` | GET_QUOTE (3) | Healthy agent, IMA policy `production-v1` |
-| `a1b2c3d4-0000-1111-2222-333344445555` | FAILED (7) | Failed agent, regcount=3 |
-| `f7e6d5c4-b3a2-9180-7654-321098765432` | PROVIDE_V (5) | Push-mode agent, measured boot + IMA policies |
+| Agent UUID | Mode | State | Description |
+|-----------|------|-------|-------------|
+| `d432fbb3-d2f1-4a97-9ef7-75bd81c00000` | Pull | GET_QUOTE | Healthy agent, IMA policy `production-v1` |
+| `a1b2c3d4-0000-1111-2222-333344445555` | Pull | FAILED | Failed agent, regcount=3 |
+| `f7e6d5c4-b3a2-9180-7654-321098765432` | Push | PASS | Healthy push-mode agent, measured boot + IMA policies |
+| `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, attestation timeout + 3 consecutive failures |
 
 ## Linting
 

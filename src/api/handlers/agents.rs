@@ -34,13 +34,14 @@ pub async fn list_agents(
     let mut summaries = Vec::new();
     for id_str in &agent_ids {
         let agent = state.keylime.get_verifier_agent(id_str).await?;
-        let agent_state =
-            AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+        let is_push = agent.accept_attestations.is_some();
 
-        let mode = if agent.operational_state == 5 {
-            AttestationMode::Push
+        let (mode, agent_state) = if is_push {
+            (AttestationMode::Push, AgentState::from_push_agent(&agent))
         } else {
-            AttestationMode::Pull
+            let pull_state =
+                AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+            (AttestationMode::Pull, pull_state)
         };
 
         let uuid = Uuid::parse_str(&agent.agent_id)
@@ -105,13 +106,17 @@ pub async fn get_agent(
     let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
     let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
 
-    let agent_state =
-        AgentState::try_from(verifier_agent.operational_state).map_err(AppError::Internal)?;
+    let is_push = verifier_agent.accept_attestations.is_some();
 
-    let mode = if verifier_agent.operational_state == 5 {
-        AttestationMode::Push
+    let (mode, agent_state) = if is_push {
+        (
+            AttestationMode::Push,
+            AgentState::from_push_agent(&verifier_agent),
+        )
     } else {
-        AttestationMode::Pull
+        let pull_state =
+            AgentState::try_from(verifier_agent.operational_state).map_err(AppError::Internal)?;
+        (AttestationMode::Pull, pull_state)
     };
 
     // Build a combined JSON response with data from both sources
@@ -161,18 +166,20 @@ pub async fn search_agents(
     let mut results = Vec::new();
     for id_str in &agent_ids {
         let agent = state.keylime.get_verifier_agent(id_str).await?;
-        let agent_state =
-            AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
 
         // Match against UUID, IP
         let matches =
             agent.agent_id.to_lowercase().contains(&q) || agent.ip.to_lowercase().contains(&q);
 
         if matches {
-            let mode = if agent.operational_state == 5 {
-                AttestationMode::Push
+            let is_push = agent.accept_attestations.is_some();
+
+            let (mode, agent_state) = if is_push {
+                (AttestationMode::Push, AgentState::from_push_agent(&agent))
             } else {
-                AttestationMode::Pull
+                let pull_state =
+                    AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
+                (AttestationMode::Pull, pull_state)
             };
 
             let uuid = Uuid::parse_str(&agent.agent_id)

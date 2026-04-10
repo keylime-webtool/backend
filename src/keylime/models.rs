@@ -24,6 +24,13 @@ pub struct VerifierAgent {
     pub accept_tpm_hash_algs: Vec<String>,
     pub accept_tpm_encryption_algs: Vec<String>,
     pub accept_tpm_signing_algs: Vec<String>,
+    // Push-mode specific fields (present only for push agents)
+    #[serde(default)]
+    pub accept_attestations: Option<bool>,
+    #[serde(default)]
+    pub attestation_count: Option<u64>,
+    #[serde(default)]
+    pub consecutive_attestation_failures: Option<u32>,
 }
 
 /// Raw agent data from the Keylime Registrar API.

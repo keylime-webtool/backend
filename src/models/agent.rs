@@ -2,11 +2,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Pull-mode (v2 API) agent states.
+/// Agent states covering both pull-mode (operational_state) and push-mode
+/// (computed from accept_attestations / attestation_count / consecutive failures).
 /// See FR-069 for state machine visualization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AgentState {
+    // Pull-mode states (from operational_state integer)
     Registered = 0,
     Start = 1,
     Saved = 2,
@@ -17,13 +19,20 @@ pub enum AgentState {
     Terminated = 8,
     InvalidQuote = 9,
     TenantFailed = 10,
+    // Push-mode states (computed from push-specific fields)
+    Pass = 100,
+    Fail = 101,
+    Pending = 102,
 }
 
 impl AgentState {
     pub fn is_failed(self) -> bool {
         matches!(
             self,
-            AgentState::Failed | AgentState::InvalidQuote | AgentState::TenantFailed
+            AgentState::Failed
+                | AgentState::InvalidQuote
+                | AgentState::TenantFailed
+                | AgentState::Fail
         )
     }
 }
@@ -50,7 +59,6 @@ impl TryFrom<i32> for AgentState {
 
 /// Attestation mode the agent operates in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum AttestationMode {
     Pull,
     Push,
@@ -81,9 +89,10 @@ pub struct Agent {
 }
 
 impl AgentState {
-    /// Returns all valid agent states.
+    /// Returns all valid agent states (pull + push).
     pub fn all() -> &'static [AgentState] {
         &[
+            // Pull-mode states
             AgentState::Registered,
             AgentState::Start,
             AgentState::Saved,
@@ -94,7 +103,26 @@ impl AgentState {
             AgentState::Terminated,
             AgentState::InvalidQuote,
             AgentState::TenantFailed,
+            // Push-mode states
+            AgentState::Pass,
+            AgentState::Fail,
+            AgentState::Pending,
         ]
+    }
+
+    /// Compute push-mode state from verifier agent fields.
+    pub fn from_push_agent(agent: &crate::keylime::models::VerifierAgent) -> Self {
+        let accepting = agent.accept_attestations.unwrap_or(true);
+        let failures = agent.consecutive_attestation_failures.unwrap_or(0);
+        let count = agent.attestation_count.unwrap_or(0);
+
+        if !accepting || failures > 0 {
+            AgentState::Fail
+        } else if count > 0 {
+            AgentState::Pass
+        } else {
+            AgentState::Pending
+        }
     }
 }
 
@@ -119,6 +147,7 @@ mod tests {
         assert!(AgentState::Failed.is_failed());
         assert!(AgentState::InvalidQuote.is_failed());
         assert!(AgentState::TenantFailed.is_failed());
+        assert!(AgentState::Fail.is_failed());
     }
 
     #[test]
@@ -131,6 +160,8 @@ mod tests {
             AgentState::Retry,
             AgentState::ProvideV,
             AgentState::Terminated,
+            AgentState::Pass,
+            AgentState::Pending,
         ];
         for state in non_failed {
             assert!(!state.is_failed(), "{state:?} should not be failed");
@@ -139,7 +170,7 @@ mod tests {
 
     #[test]
     fn all_states_returns_all_variants() {
-        assert_eq!(AgentState::all().len(), 10);
+        assert_eq!(AgentState::all().len(), 13);
     }
 
     #[test]
@@ -152,10 +183,19 @@ mod tests {
     }
 
     #[test]
+    fn push_state_serde_roundtrip() {
+        let state = AgentState::Pass;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"PASS\"");
+        let deserialized: AgentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, state);
+    }
+
+    #[test]
     fn attestation_mode_serde_roundtrip() {
         let mode = AttestationMode::Push;
         let json = serde_json::to_string(&mode).unwrap();
-        assert_eq!(json, "\"push\"");
+        assert_eq!(json, "\"Push\"");
         let deserialized: AttestationMode = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, mode);
     }
