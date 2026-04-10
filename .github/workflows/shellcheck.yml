@@ -23,6 +23,10 @@ jobs:
         if: steps.changes.outputs.scripts == 'true'
         with:
           scandir: ./tests
+      - uses: ludeeus/action-shellcheck@master
+        if: steps.changes.outputs.scripts == 'true'
+        with:
+          scandir: ./scripts
       - name: Skip (no shell script changes)
         if: steps.changes.outputs.scripts != 'true'
         run: echo "No shell script changes — skipping ShellCheck"
