@@ -58,7 +58,15 @@ async fn collect_certificates(state: &AppState) -> AppResult<Vec<Certificate>> {
                 chain_valid: Some(true),
             });
 
-            // AK certificate
+            // AK certificate — agents with high regcount (re-registered
+            // multiple times) get a shorter-lived cert that is approaching
+            // expiry, simulating a realistic "troubled agent" scenario.
+            let (ak_not_after, ak_status) = if reg.regcount > 2 {
+                (now + Duration::days(25), CertificateStatus::ExpiringSoon)
+            } else {
+                (now + Duration::days(730), CertificateStatus::Valid)
+            };
+
             certs.push(Certificate {
                 id: derive_cert_id(&agent_uuid, "ak"),
                 cert_type: CertificateType::Ak,
@@ -66,13 +74,13 @@ async fn collect_certificates(state: &AppState) -> AppResult<Vec<Certificate>> {
                 issuer_dn: "CN=Privacy CA".into(),
                 serial_number: format!("AK-{}", &reg.agent_id[..8]),
                 not_before: now - Duration::days(365),
-                not_after: now + Duration::days(730),
+                not_after: ak_not_after,
                 public_key_algorithm: "RSA".into(),
                 public_key_size: 2048,
                 signature_algorithm: "SHA256withRSA".into(),
                 sans: vec![],
                 key_usage: vec!["digitalSignature".into(), "nonRepudiation".into()],
-                status: CertificateStatus::Valid,
+                status: ak_status,
                 associated_entity: reg.agent_id.clone(),
                 chain_valid: Some(true),
             });
