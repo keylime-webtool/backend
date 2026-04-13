@@ -1,6 +1,6 @@
 ## Pending Implementation -- Keylime Webtool Backend
 
-### Current Status: ~77% of backend functions implemented (53/71 handlers)
+### Current Status: ~85% of backend functions implemented (61/71 handlers)
 
 ---
 
@@ -32,17 +32,48 @@ Plus 3 TODOs in `src/auth/oidc.rs:19-21` (authorization URL, code exchange, user
 
 ---
 
-### 3. Alert Management (7 stub handlers -- entirely unimplemented)
+### 3. Alert Management (2 stub handlers + pending alert generation)
 
-| Handler | File | Requirement |
-|---|---|---|
-| `list_alerts()` | `alerts.rs:11` | FR-047 |
-| `acknowledge_alert()` | `alerts.rs:16` | FR-047 |
-| `investigate_alert()` | `alerts.rs:21` | FR-047 |
-| `resolve_alert()` | `alerts.rs:31` | FR-047 |
-| `dismiss_alert()` | `alerts.rs:39` | FR-047 |
-| `list_notifications()` | `alerts.rs:44` | FR-009 |
-| `update_thresholds()` | `alerts.rs:57` | FR-011 |
+Alert lifecycle handlers are now implemented with an in-memory `AlertStore` (seeded with sample alerts). The remaining stubs and pending work:
+
+| Handler | File | Requirement | Status |
+|---|---|---|---|
+| `list_notifications()` | `alerts.rs` | FR-009 -- in-app notification bell with badge count | Stub |
+| `update_thresholds()` | `alerts.rs` | FR-011 -- configurable alert thresholds (Admin only) | Stub |
+
+#### Pending: Automatic alert generation for down systems
+
+No alerts are currently raised automatically. A background health-check task is needed to probe service availability and create alerts in the `AlertStore`. Required scenarios:
+
+| Alert Condition | Alert Type | Severity | Requirement |
+|---|---|---|---|
+| **Verifier unreachable** -- backend cannot connect to Keylime Verifier API | `service_down` | CRITICAL | FR-046 |
+| **Registrar unreachable** -- backend cannot connect to Keylime Registrar API | `service_down` | CRITICAL | FR-046 |
+| **Backend unreachable** -- frontend cannot reach the backend API (frontend-side detection needed, not backend) | N/A (frontend) | CRITICAL | FR-046 |
+| **All revocation channels unavailable** -- webhook, ZeroMQ, and REST notification channels all failing | `service_down` | CRITICAL | FR-046 |
+| **Webhook delivery failure** -- revocation notification webhook returns error / times out | `service_down` | WARNING | FR-046 |
+
+Implementation approach:
+- `tokio::spawn` a background task at startup that periodically probes Verifier/Registrar health endpoints
+- On failure, insert a `service_down` alert into the `AlertStore`; on recovery, auto-resolve it (FR-049)
+- For **backend unreachable**, detection must happen in the frontend (axios interceptor or WebSocket disconnect handler) since the backend cannot observe its own downtime
+
+#### Pending: Alert generation from attestation failures
+
+Alerts should be created automatically when agents fail attestation. This requires:
+
+| Alert Condition | Alert Type | Severity | Requirement |
+|---|---|---|---|
+| Agent attestation quote invalid | `attestation_failure` | CRITICAL | FR-025/047 |
+| Agent IMA policy violation | `policy_violation` | CRITICAL | FR-025/047 |
+| Agent consecutive failures exceed threshold | `attestation_failure` | WARNING | FR-011/047 |
+| Certificate approaching expiry (≤30 days) | `cert_expiry` | WARNING | FR-051 |
+| Certificate critical expiry (≤7 days) | `cert_expiry` | CRITICAL | FR-051 |
+| PCR value change detected | `pcr_change` | INFO | FR-021/022 |
+
+#### Pending: Alert persistence
+
+The current `AlertStore` is in-memory -- all alerts are lost on restart. Needs migration to TimescaleDB (blocked by infrastructure wiring, section 1).
 
 ---
 
@@ -118,8 +149,10 @@ These handlers exist and return valid JSON, but with placeholder data:
 1. **Infrastructure wiring** -- DB + cache + session + audit in `AppState` + middleware
 2. **Authentication** -- OIDC flow + JWT middleware (unblocks RBAC enforcement)
 3. **Policy CRUD** -- create/update/delete/versioning (needs DB)
-4. **Alert management** -- full lifecycle (needs DB)
-5. **Audit log API** -- wire existing logger to handlers (needs DB)
-6. **Attestation incidents** -- correlation + root cause (needs DB for history)
-7. **WebSocket** -- real-time event streaming
-8. **Remaining stubs** -- cert renewal, compliance export, DB metrics
+4. **Alert generation** -- background health-check for Verifier/Registrar downtime, attestation failure -> alert creation
+5. **Alert persistence** -- migrate in-memory AlertStore to TimescaleDB (needs DB)
+6. **Alert notifications** -- `list_notifications` + `update_thresholds` handlers, external channel delivery (FR-009/010/011)
+7. **Audit log API** -- wire existing logger to handlers (needs DB)
+8. **Attestation incidents** -- correlation + root cause (needs DB for history)
+9. **WebSocket** -- real-time event streaming (includes alert push)
+10. **Remaining stubs** -- cert renewal, compliance export, DB metrics
