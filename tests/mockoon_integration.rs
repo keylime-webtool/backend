@@ -41,7 +41,7 @@ async fn test_mockoon_verifier_list_agents() {
     assert_eq!(body["status"], "Success");
 
     let uuids = body["results"]["uuids"].as_array().unwrap();
-    assert_eq!(uuids.len(), 4);
+    assert_eq!(uuids.len(), 5);
     assert!(uuids
         .iter()
         .any(|u| u == "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"));
@@ -54,6 +54,9 @@ async fn test_mockoon_verifier_list_agents() {
     assert!(uuids
         .iter()
         .any(|u| u == "b2c3d4e5-a1b0-8765-4321-fedcba987654"));
+    assert!(uuids
+        .iter()
+        .any(|u| u == "c5d6e7f8-a9b0-4321-8765-abcdef012345"));
 }
 
 #[tokio::test]
@@ -170,6 +173,38 @@ async fn test_mockoon_verifier_push_mode_failed_agent() {
 }
 
 #[tokio::test]
+async fn test_mockoon_verifier_push_mode_ok_agent_2() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{VERIFIER_BASE}/v2/agents/c5d6e7f8-a9b0-4321-8765-abcdef012345"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+
+    let body: VerifierResponse<VerifierAgent> = resp.json().await.unwrap();
+    assert_eq!(
+        body.results.agent_id,
+        "c5d6e7f8-a9b0-4321-8765-abcdef012345"
+    );
+    assert_eq!(body.results.ip, "10.0.1.50");
+    assert_eq!(body.results.operational_state, 5);
+    assert_eq!(body.results.hash_alg, "sha256");
+    assert_eq!(body.results.ima_policy.as_deref(), Some("production-v1"));
+    assert!(body.results.mb_policy.is_none());
+    // Push-specific fields: healthy push agent
+    assert_eq!(body.results.accept_attestations, Some(true));
+    assert_eq!(body.results.attestation_count, Some(78));
+    assert_eq!(body.results.consecutive_attestation_failures, Some(0));
+}
+
+#[tokio::test]
 async fn test_mockoon_verifier_agent_not_found() {
     if std::env::var("MOCKOON_VERIFIER").is_err() {
         eprintln!("Skipping: MOCKOON_VERIFIER not set");
@@ -278,7 +313,7 @@ async fn test_mockoon_registrar_list_agents() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     let uuids = body["results"]["uuids"].as_array().unwrap();
-    assert_eq!(uuids.len(), 4);
+    assert_eq!(uuids.len(), 5);
 }
 
 #[tokio::test]
@@ -385,4 +420,29 @@ async fn test_mockoon_registrar_push_failed_agent_detail() {
     );
     assert_eq!(body.results.ip, "10.0.1.40");
     assert_eq!(body.results.regcount, 2);
+}
+
+#[tokio::test]
+async fn test_mockoon_registrar_push_ok_agent_2_detail() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{REGISTRAR_BASE}/v2/agents/c5d6e7f8-a9b0-4321-8765-abcdef012345"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<RegistrarAgent> = resp.json().await.unwrap();
+    assert_eq!(
+        body.results.agent_id,
+        "c5d6e7f8-a9b0-4321-8765-abcdef012345"
+    );
+    assert_eq!(body.results.ip, "10.0.1.50");
+    assert_eq!(body.results.regcount, 1);
 }
