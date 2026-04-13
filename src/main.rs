@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use keylime_webtool_backend::api::routes;
 use keylime_webtool_backend::config::KeylimeConfig;
 use keylime_webtool_backend::keylime::client::KeylimeClient;
+use keylime_webtool_backend::models::alert_store::AlertStore;
 use keylime_webtool_backend::state::AppState;
 
 #[tokio::main]
@@ -35,8 +36,11 @@ async fn main() -> anyhow::Result<()> {
 
     let keylime_client = KeylimeClient::new(keylime_config)?;
 
+    let alert_store = AlertStore::new_with_seed_data();
+
     let state = AppState {
         keylime: Arc::new(keylime_client),
+        alert_store: Arc::new(alert_store),
     };
 
     let app = routes::build_router(state);

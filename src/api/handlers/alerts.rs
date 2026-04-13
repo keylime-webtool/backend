@@ -1,47 +1,147 @@
-use axum::extract::Path;
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::api::response::ApiResponse;
+use crate::api::response::{ApiResponse, PaginatedResponse};
 use crate::error::{AppError, AppResult};
-use crate::models::alert::Alert;
+use crate::models::alert::{Alert, AlertSummary};
+use crate::state::AppState;
+
+/// Query parameters for alert list filtering.
+#[derive(Debug, Deserialize)]
+pub struct AlertListParams {
+    pub severity: Option<String>,
+    pub state: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
 
 /// GET /api/alerts -- Alert management dashboard (FR-047).
-pub async fn list_alerts() -> AppResult<Json<ApiResponse<Vec<Alert>>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn list_alerts(
+    State(state): State<AppState>,
+    Query(params): Query<AlertListParams>,
+) -> AppResult<Json<ApiResponse<PaginatedResponse<Alert>>>> {
+    let alerts = state
+        .alert_store
+        .list(params.severity.as_deref(), params.state.as_deref());
+
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(25).min(100);
+    let total_items = alerts.len() as u64;
+    let total_pages = (total_items + per_page - 1) / per_page.max(1);
+    let start = ((page - 1) * per_page) as usize;
+    let items: Vec<Alert> = alerts
+        .into_iter()
+        .skip(start)
+        .take(per_page as usize)
+        .collect();
+
+    Ok(Json(ApiResponse::ok(PaginatedResponse {
+        items,
+        page,
+        page_size: per_page,
+        total_items,
+        total_pages,
+    })))
+}
+
+/// GET /api/alerts/summary -- Alert summary KPIs for dashboard.
+pub async fn get_summary(
+    State(state): State<AppState>,
+) -> AppResult<Json<ApiResponse<AlertSummary>>> {
+    let summary = state.alert_store.summary();
+    Ok(Json(ApiResponse::ok(summary)))
+}
+
+/// GET /api/alerts/:id -- Get a single alert.
+pub async fn get_alert(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<Alert>>> {
+    let alert = state
+        .alert_store
+        .get(id)
+        .ok_or_else(|| AppError::NotFound(format!("alert {id} not found")))?;
+    Ok(Json(ApiResponse::ok(alert)))
 }
 
 /// POST /api/alerts/:id/acknowledge -- Acknowledge an alert (FR-047).
-pub async fn acknowledge_alert(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn acknowledge_alert(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<()>>> {
+    state
+        .alert_store
+        .acknowledge(id)
+        .map_err(AppError::BadRequest)?;
+    Ok(Json(ApiResponse::ok(())))
 }
 
 /// POST /api/alerts/:id/investigate -- Move to investigation (FR-047).
-pub async fn investigate_alert(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+#[derive(Debug, Deserialize)]
+pub struct InvestigateRequest {
+    pub assigned_to: Option<String>,
+}
+
+pub async fn investigate_alert(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<InvestigateRequest>,
+) -> AppResult<Json<ApiResponse<()>>> {
+    state
+        .alert_store
+        .investigate(id, body.assigned_to)
+        .map_err(AppError::BadRequest)?;
+    Ok(Json(ApiResponse::ok(())))
 }
 
 /// POST /api/alerts/:id/resolve -- Resolve an alert (FR-047).
 #[derive(Debug, Deserialize)]
 pub struct ResolveRequest {
-    pub reason: String,
+    pub resolution: Option<String>,
 }
 
 pub async fn resolve_alert(
-    Path(_id): Path<Uuid>,
-    Json(_body): Json<ResolveRequest>,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ResolveRequest>,
 ) -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+    state
+        .alert_store
+        .resolve(id, body.resolution)
+        .map_err(AppError::BadRequest)?;
+    Ok(Json(ApiResponse::ok(())))
 }
 
 /// POST /api/alerts/:id/dismiss -- Dismiss an alert (FR-047).
-pub async fn dismiss_alert(Path(_id): Path<Uuid>) -> AppResult<Json<ApiResponse<()>>> {
-    Err(AppError::Internal("not implemented".into()))
+pub async fn dismiss_alert(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<()>>> {
+    state
+        .alert_store
+        .dismiss(id)
+        .map_err(AppError::BadRequest)?;
+    Ok(Json(ApiResponse::ok(())))
+}
+
+/// POST /api/alerts/:id/escalate -- Escalate an alert (FR-048).
+pub async fn escalate_alert(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<()>>> {
+    state
+        .alert_store
+        .escalate(id)
+        .map_err(AppError::BadRequest)?;
+    Ok(Json(ApiResponse::ok(())))
 }
 
 /// GET /api/notifications -- In-app notifications with badge count (FR-009).
-pub async fn list_notifications() -> AppResult<Json<ApiResponse<()>>> {
+pub async fn list_notifications(
+    State(_state): State<AppState>,
+) -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))
 }
 
@@ -55,6 +155,7 @@ pub struct ThresholdsConfig {
 }
 
 pub async fn update_thresholds(
+    State(_state): State<AppState>,
     Json(_body): Json<ThresholdsConfig>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))

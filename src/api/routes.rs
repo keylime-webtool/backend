@@ -128,8 +128,10 @@ fn certificate_routes() -> Router<AppState> {
 fn alert_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::alerts::list_alerts))
+        .route("/summary", get(handlers::alerts::get_summary))
         .route("/thresholds", put(handlers::alerts::update_thresholds))
         .route("/notifications", get(handlers::alerts::list_notifications))
+        .route("/{id}", get(handlers::alerts::get_alert))
         .route(
             "/{id}/acknowledge",
             post(handlers::alerts::acknowledge_alert),
@@ -140,6 +142,7 @@ fn alert_routes() -> Router<AppState> {
         )
         .route("/{id}/resolve", post(handlers::alerts::resolve_alert))
         .route("/{id}/dismiss", post(handlers::alerts::dismiss_alert))
+        .route("/{id}/escalate", post(handlers::alerts::escalate_alert))
 }
 
 fn audit_routes() -> Router<AppState> {
