@@ -125,8 +125,9 @@ curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432/boot-
 curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/certificates | jq
 curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw | jq
 
-# Attestation analytics
-curl http://localhost:8080/api/attestations/summary | jq
+# Attestation analytics (supports ?range=1h|6h|24h|7d|30d)
+curl "http://localhost:8080/api/attestations/summary?range=30d" | jq
+curl "http://localhost:8080/api/attestations/timeline?range=24h" | jq
 curl http://localhost:8080/api/attestations | jq
 curl http://localhost:8080/api/attestations/failures | jq
 
@@ -167,14 +168,15 @@ The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment
 
 ### Mock fleet
 
-The mock data defines a fleet of 3 agents in different states:
+The mock data defines a fleet of 5 agents in different states:
 
 | Agent UUID | Mode | State | Description |
 |-----------|------|-------|-------------|
 | `d432fbb3-d2f1-4a97-9ef7-75bd81c00000` | Pull | GET_QUOTE | Healthy agent, IMA policy `production-v1` |
 | `a1b2c3d4-0000-1111-2222-333344445555` | Pull | FAILED | Failed agent, regcount=3 |
-| `f7e6d5c4-b3a2-9180-7654-321098765432` | Push | PASS | Healthy push-mode agent, measured boot + IMA policies |
+| `f7e6d5c4-b3a2-9180-7654-321098765432` | Push | PASS | Healthy push-mode agent, measured boot + IMA policies, attestation_count=42 |
 | `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, attestation timeout + 3 consecutive failures |
+| `c5d6e7f8-a9b0-4321-8765-abcdef012345` | Push | PASS | Healthy push-mode agent, IMA policy `production-v1`, attestation_count=78 |
 
 ## Linting
 

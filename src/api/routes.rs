@@ -65,6 +65,7 @@ fn attestation_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::attestations::list_attestations))
         .route("/summary", get(handlers::attestations::get_summary))
+        .route("/timeline", get(handlers::attestations::get_timeline))
         .route("/failures", get(handlers::attestations::get_failures))
         .route("/incidents", get(handlers::attestations::list_incidents))
         .route("/incidents/{id}", get(handlers::attestations::get_incident))
