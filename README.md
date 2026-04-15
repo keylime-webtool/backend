@@ -178,6 +178,8 @@ The mock data defines a fleet of 5 agents in different states:
 | `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, attestation timeout + 3 consecutive failures |
 | `c5d6e7f8-a9b0-4321-8765-abcdef012345` | Push | PASS | Healthy push-mode agent, IMA policy `production-v1`, attestation_count=78 |
 
+Since there is no attestation history table yet, the `/api/attestations/summary` endpoint derives event-level stats from agent states: push-mode agents contribute their `attestation_count` and `consecutive_attestation_failures`, while pull-mode agents count as a single event each. The `/api/attestations/timeline` endpoint distributes these totals across hourly buckets with deterministic variation so the chart looks natural.
+
 ## Linting
 
 ```bash
