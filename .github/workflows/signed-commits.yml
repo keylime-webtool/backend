@@ -1,0 +1,9 @@
+name: Signed commits
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-signed:
+    uses: keylime-webtool/.github/.github/workflows/signed-commits.yml@main
