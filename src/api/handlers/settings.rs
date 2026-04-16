@@ -53,6 +53,7 @@ pub async fn update_keylime(
 
     let new_client = KeylimeClient::new(config)?;
     state.swap_keylime(new_client);
+    state.persist_settings();
 
     let settings = KeylimeSettings {
         verifier_url: body.verifier_url,
@@ -166,6 +167,7 @@ pub async fn update_certificates(
 
     let new_client = KeylimeClient::new(config)?;
     state.swap_keylime(new_client);
+    state.persist_settings();
 
     let kl = state.keylime();
     let result = match kl.mtls_config() {

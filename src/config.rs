@@ -24,7 +24,7 @@ pub struct ServerConfig {
     pub tls_key: Option<PathBuf>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct KeylimeConfig {
     pub verifier_url: String,
     pub registrar_url: String,
@@ -43,7 +43,7 @@ pub struct MtlsConfig {
     pub ca_cert: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CircuitBreakerConfig {
     #[serde(default = "default_failure_threshold")]
     pub failure_threshold: u32,
