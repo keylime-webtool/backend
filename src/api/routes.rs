@@ -194,4 +194,9 @@ fn settings_routes() -> Router<AppState> {
     Router::new()
         .route("/keylime", get(handlers::settings::get_keylime))
         .route("/keylime", put(handlers::settings::update_keylime))
+        .route("/certificates", get(handlers::settings::get_certificates))
+        .route(
+            "/certificates",
+            put(handlers::settings::update_certificates),
+        )
 }

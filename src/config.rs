@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Top-level application configuration.
@@ -35,7 +35,7 @@ pub struct KeylimeConfig {
     pub circuit_breaker: CircuitBreakerConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MtlsConfig {
     pub cert: PathBuf,
     /// Path to private key or HSM/Vault URI (SR-005, SR-006).

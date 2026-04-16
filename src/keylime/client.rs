@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use crate::config::KeylimeConfig;
+use crate::config::{KeylimeConfig, MtlsConfig};
 use crate::error::{AppError, AppResult};
 
 use super::models::{
@@ -78,6 +78,7 @@ pub struct KeylimeClient {
     http: reqwest::Client,
     verifier_circuit: Arc<CircuitBreaker>,
     _log_fetch_semaphore: Arc<tokio::sync::Semaphore>,
+    mtls_config: Option<MtlsConfig>,
 }
 
 impl KeylimeClient {
@@ -90,12 +91,51 @@ impl KeylimeClient {
         // NFR-023: limit concurrent log fetches
         let log_fetch_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(config.timeout_secs))
-            .build()
-            .map_err(|e| AppError::Internal(format!("failed to build HTTP client: {e}")))?;
+        let mtls_config = config.mtls.clone();
 
-        // TODO: when config.mtls is Some, build mTLS client with certs
+        let http = if let Some(ref mtls) = config.mtls {
+            if mtls.key.starts_with("pkcs11://") || mtls.key.starts_with("vault://") {
+                return Err(AppError::Internal(
+                    "HSM/Vault key URIs are not yet supported".into(),
+                ));
+            }
+
+            let ca_pem = std::fs::read(&mtls.ca_cert).map_err(|e| {
+                AppError::Internal(format!(
+                    "failed to read CA certificate {}: {e}",
+                    mtls.ca_cert.display()
+                ))
+            })?;
+            let ca_cert = reqwest::Certificate::from_pem(&ca_pem)
+                .map_err(|e| AppError::Internal(format!("invalid CA certificate: {e}")))?;
+
+            let cert_pem = std::fs::read(&mtls.cert).map_err(|e| {
+                AppError::Internal(format!(
+                    "failed to read client certificate {}: {e}",
+                    mtls.cert.display()
+                ))
+            })?;
+            let key_pem = std::fs::read(&mtls.key).map_err(|e| {
+                AppError::Internal(format!("failed to read client key {}: {e}", mtls.key))
+            })?;
+            let mut identity_pem = cert_pem;
+            identity_pem.extend_from_slice(&key_pem);
+            let identity = reqwest::Identity::from_pem(&identity_pem)
+                .map_err(|e| AppError::Internal(format!("invalid client identity: {e}")))?;
+
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(config.timeout_secs))
+                .add_root_certificate(ca_cert)
+                .identity(identity)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+                .map_err(|e| AppError::Internal(format!("failed to build mTLS client: {e}")))?
+        } else {
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(config.timeout_secs))
+                .build()
+                .map_err(|e| AppError::Internal(format!("failed to build HTTP client: {e}")))?
+        };
 
         Ok(Self {
             verifier_url: config.verifier_url,
@@ -103,6 +143,7 @@ impl KeylimeClient {
             http,
             verifier_circuit,
             _log_fetch_semaphore: log_fetch_semaphore,
+            mtls_config,
         })
     }
 
@@ -297,6 +338,11 @@ impl KeylimeClient {
     /// Return the current Registrar URL.
     pub fn registrar_url(&self) -> &str {
         &self.registrar_url
+    }
+
+    /// Return the current mTLS configuration, if any.
+    pub fn mtls_config(&self) -> Option<&MtlsConfig> {
+        self.mtls_config.as_ref()
     }
 }
 
