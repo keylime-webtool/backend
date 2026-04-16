@@ -27,10 +27,11 @@ pub async fn connectivity_status(
         }
     };
     let verifier_latency = verifier_start.elapsed().as_millis() as u64;
+    let keylime = state.keylime();
 
     services.push(ServiceHealth {
         name: "keylime-verifier".into(),
-        endpoint: "configured".into(),
+        endpoint: keylime.verifier_url().to_string(),
         status: verifier_status,
         uptime_seconds: None,
         latency_ms: Some(verifier_latency),
@@ -46,7 +47,7 @@ pub async fn connectivity_status(
 
     services.push(ServiceHealth {
         name: "keylime-registrar".into(),
-        endpoint: "configured".into(),
+        endpoint: keylime.registrar_url().to_string(),
         status: registrar_status,
         uptime_seconds: None,
         latency_ms: Some(registrar_latency),
