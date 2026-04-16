@@ -16,10 +16,10 @@ pub async fn connectivity_status(
 
     // Check Verifier connectivity
     let verifier_start = Instant::now();
-    let verifier_status = match state.keylime.list_verifier_agents().await {
+    let verifier_status = match state.keylime().list_verifier_agents().await {
         Ok(_) => ServiceStatus::Up,
         Err(_) => {
-            if state.keylime.verifier_available().await {
+            if state.keylime().verifier_available().await {
                 ServiceStatus::Down
             } else {
                 ServiceStatus::Timeout
@@ -38,7 +38,7 @@ pub async fn connectivity_status(
 
     // Check Registrar connectivity
     let registrar_start = Instant::now();
-    let registrar_status = match state.keylime.list_registrar_agents().await {
+    let registrar_status = match state.keylime().list_registrar_agents().await {
         Ok(_) => ServiceStatus::Up,
         Err(_) => ServiceStatus::Down,
     };

@@ -12,14 +12,14 @@ pub async fn verifier_metrics(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let start = Instant::now();
-    let agent_count = state.keylime.list_verifier_agents().await?.len();
+    let agent_count = state.keylime().list_verifier_agents().await?.len();
     let latency = start.elapsed().as_millis() as u64;
 
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "verifier_url": "configured",
         "agent_count": agent_count,
         "api_latency_ms": latency,
-        "circuit_breaker": if state.keylime.verifier_available().await {
+        "circuit_breaker": if state.keylime().verifier_available().await {
             "closed"
         } else {
             "open"
@@ -45,7 +45,7 @@ pub async fn api_response_times(
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     // Measure a round-trip to the Verifier as a baseline
     let start = Instant::now();
-    let _ = state.keylime.list_verifier_agents().await;
+    let _ = state.keylime().list_verifier_agents().await;
     let verifier_latency = start.elapsed().as_millis() as u64;
 
     Ok(Json(ApiResponse::ok(serde_json::json!({
@@ -75,7 +75,7 @@ pub async fn config_drift() -> AppResult<Json<ApiResponse<serde_json::Value>>> {
 pub async fn capacity_planning(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
-    let agent_count = state.keylime.list_verifier_agents().await?.len();
+    let agent_count = state.keylime().list_verifier_agents().await?.len();
 
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "current_agents": agent_count,

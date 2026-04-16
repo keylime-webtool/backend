@@ -29,6 +29,7 @@ fn api_routes() -> Router<AppState> {
         .nest("/compliance", compliance_routes())
         .nest("/integrations", integration_routes())
         .nest("/performance", performance_routes())
+        .nest("/settings", settings_routes())
 }
 
 fn auth_routes() -> Router<AppState> {
@@ -187,4 +188,10 @@ fn performance_routes() -> Router<AppState> {
         )
         .route("/config", get(handlers::performance::config_drift))
         .route("/capacity", get(handlers::performance::capacity_planning))
+}
+
+fn settings_routes() -> Router<AppState> {
+    Router::new()
+        .route("/keylime", get(handlers::settings::get_keylime))
+        .route("/keylime", put(handlers::settings::update_keylime))
 }
