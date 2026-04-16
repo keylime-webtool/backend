@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
@@ -38,10 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     let alert_store = AlertStore::new_with_seed_data();
 
-    let state = AppState {
-        keylime: Arc::new(keylime_client),
-        alert_store: Arc::new(alert_store),
-    };
+    let state = AppState::new(keylime_client, alert_store);
 
     let app = routes::build_router(state);
 

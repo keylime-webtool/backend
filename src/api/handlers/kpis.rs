@@ -10,7 +10,7 @@ use crate::state::AppState;
 /// GET /api/kpis -- Fleet overview KPIs (FR-001).
 pub async fn get_kpis(State(state): State<AppState>) -> AppResult<Json<ApiResponse<FleetKpis>>> {
     // Fetch all agent IDs from Verifier
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let total = agent_ids.len() as u64;
 
     let mut failed: u64 = 0;
@@ -19,7 +19,7 @@ pub async fn get_kpis(State(state): State<AppState>) -> AppResult<Json<ApiRespon
 
     // Fetch each agent's state to compute KPIs
     for id_str in &agent_ids {
-        match state.keylime.get_verifier_agent(id_str).await {
+        match state.keylime().get_verifier_agent(id_str).await {
             Ok(agent) => {
                 let agent_state = if agent.accept_attestations.is_some() {
                     AgentState::from_push_agent(&agent)

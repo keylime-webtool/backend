@@ -56,13 +56,13 @@ pub async fn get_report(
     }
 
     // Gather fleet state for compliance assessment
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let total = agent_ids.len() as u64;
     let mut compliant: u64 = 0;
     let mut non_compliant: u64 = 0;
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let agent_state = if agent.accept_attestations.is_some() {
                 AgentState::from_push_agent(&agent)
             } else {

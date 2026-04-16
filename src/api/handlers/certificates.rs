@@ -31,12 +31,12 @@ fn sha2_digest(data: &[u8]) -> [u8; 32] {
 
 /// Build certificate entries from registrar agent data.
 async fn collect_certificates(state: &AppState) -> AppResult<Vec<Certificate>> {
-    let agent_ids = state.keylime.list_registrar_agents().await?;
+    let agent_ids = state.keylime().list_registrar_agents().await?;
     let now = Utc::now();
     let mut certs = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(reg) = state.keylime.get_registrar_agent(id_str).await {
+        if let Ok(reg) = state.keylime().get_registrar_agent(id_str).await {
             let agent_uuid = Uuid::parse_str(&reg.agent_id).unwrap_or_else(|_| Uuid::new_v4());
 
             // EK certificate

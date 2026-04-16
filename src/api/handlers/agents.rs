@@ -28,12 +28,12 @@ pub async fn list_agents(
     Query(params): Query<AgentListParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AgentSummary>>>> {
     // Fetch agent UUIDs from Verifier
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     // Fetch detail for each agent to build summaries
     let mut summaries = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime.get_verifier_agent(id_str).await?;
+        let agent = state.keylime().get_verifier_agent(id_str).await?;
         let is_push = agent.accept_attestations.is_some();
 
         let (mode, agent_state) = if is_push {
@@ -104,8 +104,8 @@ pub async fn get_agent(
     let id_str = id.to_string();
 
     // Fetch from both Verifier and Registrar
-    let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
 
     let is_push = verifier_agent.accept_attestations.is_some();
 
@@ -162,11 +162,11 @@ pub async fn search_agents(
     Query(params): Query<SearchParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
     let q = params.q.to_lowercase();
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     let mut results = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime.get_verifier_agent(id_str).await?;
+        let agent = state.keylime().get_verifier_agent(id_str).await?;
 
         // Match against UUID, IP
         let matches =
@@ -210,16 +210,16 @@ pub async fn agent_action(
     let id_str = id.to_string();
     match action.as_str() {
         "reactivate" => {
-            state.keylime.reactivate_agent(&id_str).await?;
+            state.keylime().reactivate_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         "delete" => {
-            state.keylime.delete_agent(&id_str).await?;
+            state.keylime().delete_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         "stop" => {
             // Stop uses the same PUT endpoint with a different state
-            state.keylime.reactivate_agent(&id_str).await?;
+            state.keylime().reactivate_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         _ => Err(AppError::BadRequest(format!(
@@ -245,9 +245,9 @@ pub async fn bulk_action(
     for id in &body.agent_ids {
         let id_str = id.to_string();
         let result = match body.action.as_str() {
-            "reactivate" => state.keylime.reactivate_agent(&id_str).await,
-            "delete" => state.keylime.delete_agent(&id_str).await,
-            "stop" => state.keylime.reactivate_agent(&id_str).await,
+            "reactivate" => state.keylime().reactivate_agent(&id_str).await,
+            "delete" => state.keylime().delete_agent(&id_str).await,
+            "stop" => state.keylime().reactivate_agent(&id_str).await,
             _ => {
                 return Err(AppError::BadRequest(format!(
                     "unknown action: {}. Valid actions: reactivate, delete, stop",
@@ -275,7 +275,7 @@ pub async fn get_timeline(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
-    let agent = state.keylime.get_verifier_agent(&id_str).await?;
+    let agent = state.keylime().get_verifier_agent(&id_str).await?;
     let agent_state = if agent.accept_attestations.is_some() {
         AgentState::from_push_agent(&agent)
     } else {
@@ -319,7 +319,7 @@ pub async fn get_pcr_values(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let pcrs = state.keylime.get_agent_pcrs(&id_str).await?;
+    let pcrs = state.keylime().get_agent_pcrs(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "hash_alg": pcrs.hash_alg,
         "pcrs": pcrs.pcrs,
@@ -332,7 +332,7 @@ pub async fn get_ima_log(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let ima = state.keylime.get_agent_ima_log(&id_str).await?;
+    let ima = state.keylime().get_agent_ima_log(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "entries": ima.entries,
         "total": ima.entries.len(),
@@ -345,7 +345,7 @@ pub async fn get_boot_log(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let boot = state.keylime.get_agent_boot_log(&id_str).await?;
+    let boot = state.keylime().get_agent_boot_log(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "entries": boot.entries,
         "total": boot.entries.len(),
@@ -358,7 +358,7 @@ pub async fn get_agent_certs(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
-    let reg = state.keylime.get_registrar_agent(&id_str).await?;
+    let reg = state.keylime().get_registrar_agent(&id_str).await?;
 
     let certs = vec![
         serde_json::json!({
@@ -384,8 +384,8 @@ pub async fn get_raw_data(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
 
     let raw = serde_json::json!({
         "verifier": verifier_agent,

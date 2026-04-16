@@ -288,6 +288,18 @@ struct PolicyListResults {
     policy_names: Vec<String>,
 }
 
+impl KeylimeClient {
+    /// Return the current Verifier URL.
+    pub fn verifier_url(&self) -> &str {
+        &self.verifier_url
+    }
+
+    /// Return the current Registrar URL.
+    pub fn registrar_url(&self) -> &str {
+        &self.registrar_url
+    }
+}
+
 impl std::fmt::Debug for KeylimeClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeylimeClient")

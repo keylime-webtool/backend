@@ -132,14 +132,14 @@ pub async fn get_summary(
     Query(params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<AttestationSummary>>> {
     let (_range_start, _range_end) = parse_range(&params);
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     let mut total_successful: u64 = 0;
     let mut total_failed: u64 = 0;
     let mut latency_samples: Vec<u64> = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let stats = derive_agent_attestation(&agent);
             total_successful += stats.successful;
             total_failed += stats.failed;
@@ -212,13 +212,13 @@ pub async fn get_timeline(
     Query(params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<Vec<TimelineBucket>>>> {
     let (range_start, range_end) = parse_range(&params);
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     let mut total_successful: u64 = 0;
     let mut total_failed: u64 = 0;
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let stats = derive_agent_attestation(&agent);
             total_successful += stats.successful;
             total_failed += stats.failed;
@@ -257,12 +257,12 @@ pub async fn list_attestations(
     State(state): State<AppState>,
     Query(_params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AttestationResult>>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let now = chrono::Utc::now();
     let mut results = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let agent_state = if agent.accept_attestations.is_some() {
                 AgentState::from_push_agent(&agent)
             } else {
@@ -301,11 +301,11 @@ pub async fn get_failures(
     State(state): State<AppState>,
     Query(_params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut failures = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let agent_state = if agent.accept_attestations.is_some() {
                 AgentState::from_push_agent(&agent)
             } else {
@@ -355,7 +355,7 @@ pub async fn get_pipeline(
     Path(agent_id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Vec<PipelineResult>>>> {
     let id_str = agent_id.to_string();
-    let agent = state.keylime.get_verifier_agent(&id_str).await?;
+    let agent = state.keylime().get_verifier_agent(&id_str).await?;
     let agent_state = if agent.accept_attestations.is_some() {
         AgentState::from_push_agent(&agent)
     } else {
@@ -420,11 +420,11 @@ pub async fn get_pipeline(
 pub async fn get_push_mode_analytics(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut push_agents = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             if agent.accept_attestations.is_some() {
                 let push_state = crate::models::agent::AgentState::from_push_agent(&agent);
                 push_agents.push(serde_json::json!({
@@ -446,11 +446,11 @@ pub async fn get_push_mode_analytics(
 pub async fn get_pull_mode_monitoring(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut pull_agents = Vec::new();
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             if agent.accept_attestations.is_none() {
                 let agent_state =
                     AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed);
@@ -473,7 +473,7 @@ pub async fn get_pull_mode_monitoring(
 pub async fn get_state_machine(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<HashMap<String, u64>>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     let mut distribution: HashMap<String, u64> = HashMap::new();
     // Initialize all known states to 0
@@ -486,7 +486,7 @@ pub async fn get_state_machine(
     }
 
     for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(id_str).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let agent_state = if agent.accept_attestations.is_some() {
                 AgentState::from_push_agent(&agent)
             } else {
