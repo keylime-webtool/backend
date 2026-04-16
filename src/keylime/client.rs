@@ -156,6 +156,24 @@ impl KeylimeClient {
     // Verifier API methods
     // -----------------------------------------------------------------------
 
+    /// Probe the Verifier API directly, bypassing the circuit breaker.
+    /// Used by the health/connectivity check so it always reflects real status.
+    /// Only checks for a successful HTTP response — does not parse the body.
+    pub async fn probe_verifier(&self) -> AppResult<()> {
+        let url = format!("{}/v2/agents/", self.verifier_url);
+        let resp = self.http.get(&url).send().await?;
+        if resp.status().is_success() {
+            self.verifier_circuit.record_success().await;
+            Ok(())
+        } else {
+            self.verifier_circuit.record_failure().await;
+            let status = resp.status().as_u16();
+            Err(crate::error::AppError::NotFound(format!(
+                "Verifier returned {status}"
+            )))
+        }
+    }
+
     /// GET /v2/agents/ -- list agent IDs from the Verifier.
     pub async fn list_verifier_agents(&self) -> AppResult<Vec<String>> {
         self.check_circuit().await?;

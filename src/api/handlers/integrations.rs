@@ -14,17 +14,11 @@ pub async fn connectivity_status(
 ) -> AppResult<Json<ApiResponse<Vec<ServiceHealth>>>> {
     let mut services = Vec::new();
 
-    // Check Verifier connectivity
+    // Check Verifier connectivity (bypasses circuit breaker so health check is always live)
     let verifier_start = Instant::now();
-    let verifier_status = match state.keylime().list_verifier_agents().await {
+    let verifier_status = match state.keylime().probe_verifier().await {
         Ok(_) => ServiceStatus::Up,
-        Err(_) => {
-            if state.keylime().verifier_available().await {
-                ServiceStatus::Down
-            } else {
-                ServiceStatus::Timeout
-            }
-        }
+        Err(_) => ServiceStatus::Down,
     };
     let verifier_latency = verifier_start.elapsed().as_millis() as u64;
     let keylime = state.keylime();
