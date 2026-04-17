@@ -1,5 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
+use chrono::DateTime;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -63,15 +64,35 @@ pub async fn list_agents(
             }
         };
 
+        let (ip, last_attestation, failure_count) = if is_push {
+            let ip = agent
+                .ip
+                .clone()
+                .or_else(|| agent.verifier_ip.clone())
+                .unwrap_or_default();
+            let last = agent
+                .last_successful_attestation
+                .or(agent.last_received_quote)
+                .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+            let failures = agent.consecutive_attestation_failures.unwrap_or(0);
+            (ip, last, failures)
+        } else {
+            (
+                agent.ip.clone().unwrap_or_default(),
+                None,
+                if agent_state.is_failed() { 1 } else { 0 },
+            )
+        };
+
         summaries.push(AgentSummary {
             id: uuid,
-            ip: agent.ip.clone().unwrap_or_default(),
+            ip,
             state: agent_state,
             attestation_mode: mode,
-            last_attestation: None,
+            last_attestation,
             assigned_policy: agent.ima_policy.clone(),
             mb_policy: agent.mb_policy.clone(),
-            failure_count: if agent_state.is_failed() { 1 } else { 0 },
+            failure_count,
         });
     }
 
@@ -222,15 +243,35 @@ pub async fn search_agents(
                 }
             };
 
+            let (ip, last_attestation, failure_count) = if is_push {
+                let ip = agent
+                    .ip
+                    .clone()
+                    .or_else(|| agent.verifier_ip.clone())
+                    .unwrap_or_default();
+                let last = agent
+                    .last_successful_attestation
+                    .or(agent.last_received_quote)
+                    .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+                let failures = agent.consecutive_attestation_failures.unwrap_or(0);
+                (ip, last, failures)
+            } else {
+                (
+                    agent.ip.clone().unwrap_or_default(),
+                    None,
+                    if agent_state.is_failed() { 1 } else { 0 },
+                )
+            };
+
             results.push(AgentSummary {
                 id: uuid,
-                ip: agent.ip.clone().unwrap_or_default(),
+                ip,
                 state: agent_state,
                 attestation_mode: mode,
-                last_attestation: None,
+                last_attestation,
                 assigned_policy: agent.ima_policy.clone(),
                 mb_policy: agent.mb_policy.clone(),
-                failure_count: if agent_state.is_failed() { 1 } else { 0 },
+                failure_count,
             });
         }
     }
