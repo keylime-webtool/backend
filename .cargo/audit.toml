@@ -16,4 +16,16 @@
 # 4. No fixed rsa version is available upstream.
 #
 # Re-evaluate when a patched rsa release is published.
-ignore = ["RUSTSEC-2023-0071"]
+#
+# RUSTSEC-2026-0097: rand 0.8.5 unsound with custom logger using rand::rng()
+#
+# Accepted because:
+# 1. rand 0.8.5 is a transitive dependency pulled in by sqlx 0.8.6
+#    (sqlx-postgres, sqlx-mysql) and openidconnect 4.0.1 — both at their
+#    latest stable versions with no upgrade path available.
+# 2. This project does not use a custom logger that calls rand::rng() in
+#    its logging implementation, which is the trigger for the unsoundness.
+# 3. The direct rand dependency (0.9.x) is not affected.
+#
+# Re-evaluate when sqlx/openidconnect release versions that depend on rand 0.9+.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0097"]

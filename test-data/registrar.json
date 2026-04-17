@@ -22,7 +22,10 @@
           "statusCode": 200,
           "label": "API version response",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -50,12 +53,15 @@
       "responses": [
         {
           "uuid": "resp-reg-list-agents-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n      \"a1b2c3d4-0000-1111-2222-333344445555\",\n      \"f7e6d5c4-b3a2-9180-7654-321098765432\",\n      \"b2c3d4e5-a1b0-8765-4321-fedcba987654\",\n      \"c5d6e7f8-a9b0-4321-8765-abcdef012345\"\n    ]\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      [\n        \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\"\n      ],\n      [\n        \"a1b2c3d4-0000-1111-2222-333344445555\"\n      ],\n      [\n        \"f7e6d5c4-b3a2-9180-7654-321098765432\"\n      ],\n      [\n        \"b2c3d4e5-a1b0-8765-4321-fedcba987654\"\n      ],\n      [\n        \"c5d6e7f8-a9b0-4321-8765-abcdef012345\"\n      ]\n    ]\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "List registered agent UUIDs",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -83,12 +89,15 @@
       "responses": [
         {
           "uuid": "resp-reg-agent-healthy-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF4eHlGdFE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFrYWlrWHE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"ip\": \"10.0.1.10\",\n    \"port\": 9002,\n    \"regcount\": 1\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF4eHlGdFE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFrYWlrWHE9PQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"ip\": \"10.0.1.10\",\n      \"port\": 9002,\n      \"regcount\": 1\n    }\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Healthy agent registration data",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -116,12 +125,15 @@
       "responses": [
         {
           "uuid": "resp-reg-agent-failed-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"a1b2c3d4-0000-1111-2222-333344445555\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWVrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWFpay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n    \"ip\": \"10.0.1.20\",\n    \"port\": 9002,\n    \"regcount\": 3\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"a1b2c3d4-0000-1111-2222-333344445555\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWVrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KZmFpbGVkLWFnZW50LWFpay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n      \"ip\": \"10.0.1.20\",\n      \"port\": 9002,\n      \"regcount\": 3\n    }\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Failed agent registration data",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -149,12 +161,15 @@
       "responses": [
         {
           "uuid": "resp-reg-agent-push-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"f7e6d5c4-b3a2-9180-7654-321098765432\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1lay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1haWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n    \"ip\": \"10.0.1.30\",\n    \"port\": 9002,\n    \"regcount\": 1\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"f7e6d5c4-b3a2-9180-7654-321098765432\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1lay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1hZ2VudC1haWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n      \"ip\": \"10.0.1.30\",\n      \"port\": 9002,\n      \"regcount\": 1\n    }\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Push-mode agent registration data",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -172,8 +187,8 @@
       "responseMode": null,
       "streamingMode": null,
       "streamingInterval": 0
-    }
-    ,{
+    },
+    {
       "uuid": "route-reg-agent-push-failed-001",
       "type": "http",
       "documentation": "Registration data for failed push-mode agent",
@@ -182,12 +197,15 @@
       "responses": [
         {
           "uuid": "resp-reg-agent-push-failed-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"b2c3d4e5-a1b0-8765-4321-fedcba987654\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1mYWlsZWQtZWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1mYWlsZWQtYWlrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"ip\": \"10.0.1.40\",\n    \"port\": 9002,\n    \"regcount\": 2\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"b2c3d4e5-a1b0-8765-4321-fedcba987654\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1mYWlsZWQtZWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1mYWlsZWQtYWlrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"ip\": \"10.0.1.40\",\n      \"port\": 9002,\n      \"regcount\": 2\n    }\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Failed push-mode agent registration data",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -215,12 +233,15 @@
       "responses": [
         {
           "uuid": "resp-reg-agent-push-ok-002",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"agent_id\": \"c5d6e7f8-a9b0-4321-8765-abcdef012345\",\n    \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1vay0yLWVrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n    \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1vay0yLWFpay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n    \"ip\": \"10.0.1.50\",\n    \"port\": 9002,\n    \"regcount\": 1\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"c5d6e7f8-a9b0-4321-8765-abcdef012345\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1vay0yLWVrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1vay0yLWFpay1rZXkKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==\",\n      \"ip\": \"10.0.1.50\",\n      \"port\": 9002,\n      \"regcount\": 1\n    }\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Second healthy push-mode agent registration data",
           "headers": [
-            { "key": "Content-Type", "value": "application/json" }
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
           ],
           "bodyType": "INLINE",
           "filePath": "",
@@ -241,13 +262,34 @@
     }
   ],
   "rootChildren": [
-    { "type": "route", "uuid": "route-reg-version-001" },
-    { "type": "route", "uuid": "route-reg-list-agents-001" },
-    { "type": "route", "uuid": "route-reg-agent-healthy-001" },
-    { "type": "route", "uuid": "route-reg-agent-failed-001" },
-    { "type": "route", "uuid": "route-reg-agent-push-001" },
-    { "type": "route", "uuid": "route-reg-agent-push-failed-001" },
-    { "type": "route", "uuid": "route-reg-agent-push-ok-002" }
+    {
+      "type": "route",
+      "uuid": "route-reg-version-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-list-agents-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-healthy-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-failed-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-push-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-push-failed-001"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-push-ok-002"
+    }
   ],
   "proxyMode": false,
   "proxyHost": "",
@@ -263,12 +305,31 @@
   },
   "cors": true,
   "headers": [
-    { "key": "Access-Control-Allow-Origin", "value": "*" },
-    { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS" },
-    { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With" }
+    {
+      "key": "Access-Control-Allow-Origin",
+      "value": "*"
+    },
+    {
+      "key": "Access-Control-Allow-Methods",
+      "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS"
+    },
+    {
+      "key": "Access-Control-Allow-Headers",
+      "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With"
+    }
   ],
-  "proxyReqHeaders": [{ "key": "", "value": "" }],
-  "proxyResHeaders": [{ "key": "", "value": "" }],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
   "data": [],
   "callbacks": []
 }
