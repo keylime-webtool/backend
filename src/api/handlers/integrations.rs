@@ -14,23 +14,18 @@ pub async fn connectivity_status(
 ) -> AppResult<Json<ApiResponse<Vec<ServiceHealth>>>> {
     let mut services = Vec::new();
 
-    // Check Verifier connectivity
+    // Check Verifier connectivity (bypasses circuit breaker so health check is always live)
     let verifier_start = Instant::now();
-    let verifier_status = match state.keylime.list_verifier_agents().await {
+    let verifier_status = match state.keylime().probe_verifier().await {
         Ok(_) => ServiceStatus::Up,
-        Err(_) => {
-            if state.keylime.verifier_available().await {
-                ServiceStatus::Down
-            } else {
-                ServiceStatus::Timeout
-            }
-        }
+        Err(_) => ServiceStatus::Down,
     };
     let verifier_latency = verifier_start.elapsed().as_millis() as u64;
+    let keylime = state.keylime();
 
     services.push(ServiceHealth {
         name: "keylime-verifier".into(),
-        endpoint: "configured".into(),
+        endpoint: keylime.verifier_url().to_string(),
         status: verifier_status,
         uptime_seconds: None,
         latency_ms: Some(verifier_latency),
@@ -38,7 +33,7 @@ pub async fn connectivity_status(
 
     // Check Registrar connectivity
     let registrar_start = Instant::now();
-    let registrar_status = match state.keylime.list_registrar_agents().await {
+    let registrar_status = match state.keylime().probe_registrar().await {
         Ok(_) => ServiceStatus::Up,
         Err(_) => ServiceStatus::Down,
     };
@@ -46,7 +41,7 @@ pub async fn connectivity_status(
 
     services.push(ServiceHealth {
         name: "keylime-registrar".into(),
-        endpoint: "configured".into(),
+        endpoint: keylime.registrar_url().to_string(),
         status: registrar_status,
         uptime_seconds: None,
         latency_ms: Some(registrar_latency),

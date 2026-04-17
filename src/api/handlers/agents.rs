@@ -1,5 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
+use chrono::DateTime;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -28,34 +29,78 @@ pub async fn list_agents(
     Query(params): Query<AgentListParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AgentSummary>>>> {
     // Fetch agent UUIDs from Verifier
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
-    // Fetch detail for each agent to build summaries
+    // Fetch detail for each agent to build summaries.
+    // Skip agents that fail to fetch rather than failing the entire list.
     let mut summaries = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime.get_verifier_agent(id_str).await?;
-        let is_push = agent.accept_attestations.is_some();
+        let agent = match state.keylime().get_verifier_agent(id_str).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("skipping agent {id_str}: {e}");
+                continue;
+            }
+        };
+        let is_push = agent.is_push_mode();
 
         let (mode, agent_state) = if is_push {
             (AttestationMode::Push, AgentState::from_push_agent(&agent))
         } else {
-            let pull_state =
-                AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
-            (AttestationMode::Pull, pull_state)
+            match AgentState::from_operational_state(&agent.operational_state) {
+                Ok(s) => (AttestationMode::Pull, s),
+                Err(e) => {
+                    tracing::warn!("skipping agent {id_str}: {e}");
+                    continue;
+                }
+            }
         };
 
-        let uuid = Uuid::parse_str(&agent.agent_id)
-            .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+        let uuid = match Uuid::parse_str(&agent.agent_id) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("skipping agent {id_str}: invalid UUID: {e}");
+                continue;
+            }
+        };
+
+        let needs_registrar =
+            agent.ip.as_deref().unwrap_or("").is_empty() || agent.port.unwrap_or(0) == 0;
+        let registrar_agent = if needs_registrar {
+            state.keylime().get_registrar_agent(id_str).await.ok()
+        } else {
+            None
+        };
+        let ip = agent.resolve_ip(registrar_agent.as_ref());
+        let port = agent.resolve_port(registrar_agent.as_ref());
+        let (last_attestation, failure_count) = if is_push {
+            let last = agent
+                .last_successful_attestation
+                .or(agent.last_received_quote)
+                .filter(|&ts| ts > 0)
+                .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+            let failures = agent.consecutive_attestation_failures.unwrap_or_else(|| {
+                if agent_state.is_failed() {
+                    1
+                } else {
+                    0
+                }
+            });
+            (last, failures)
+        } else {
+            (None, if agent_state.is_failed() { 1 } else { 0 })
+        };
 
         summaries.push(AgentSummary {
             id: uuid,
-            ip: agent.ip.clone(),
+            ip,
+            port,
             state: agent_state,
             attestation_mode: mode,
-            last_attestation: None,
+            last_attestation,
             assigned_policy: agent.ima_policy.clone(),
             mb_policy: agent.mb_policy.clone(),
-            failure_count: if agent_state.is_failed() { 1 } else { 0 },
+            failure_count,
         });
     }
 
@@ -104,10 +149,10 @@ pub async fn get_agent(
     let id_str = id.to_string();
 
     // Fetch from both Verifier and Registrar
-    let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
 
-    let is_push = verifier_agent.accept_attestations.is_some();
+    let is_push = verifier_agent.is_push_mode();
 
     let (mode, agent_state) = if is_push {
         (
@@ -115,16 +160,16 @@ pub async fn get_agent(
             AgentState::from_push_agent(&verifier_agent),
         )
     } else {
-        let pull_state =
-            AgentState::try_from(verifier_agent.operational_state).map_err(AppError::Internal)?;
+        let pull_state = AgentState::from_operational_state(&verifier_agent.operational_state)
+            .map_err(AppError::Internal)?;
         (AttestationMode::Pull, pull_state)
     };
 
     // Build a combined JSON response with data from both sources
     let mut combined = serde_json::json!({
         "id": id_str,
-        "ip": verifier_agent.ip,
-        "port": verifier_agent.port,
+        "ip": verifier_agent.resolve_ip(registrar_agent.as_ref()),
+        "port": verifier_agent.resolve_port(registrar_agent.as_ref()),
         "state": agent_state,
         "attestation_mode": mode,
         "hash_alg": verifier_agent.hash_alg,
@@ -162,39 +207,87 @@ pub async fn search_agents(
     Query(params): Query<SearchParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
     let q = params.q.to_lowercase();
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
 
     let mut results = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime.get_verifier_agent(id_str).await?;
+        let agent = match state.keylime().get_verifier_agent(id_str).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("search: skipping agent {id_str}: {e}");
+                continue;
+            }
+        };
 
         // Match against UUID, IP
-        let matches =
-            agent.agent_id.to_lowercase().contains(&q) || agent.ip.to_lowercase().contains(&q);
+        let matches = agent.agent_id.to_lowercase().contains(&q)
+            || agent
+                .ip
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(&q);
 
         if matches {
-            let is_push = agent.accept_attestations.is_some();
+            let is_push = agent.is_push_mode();
 
             let (mode, agent_state) = if is_push {
                 (AttestationMode::Push, AgentState::from_push_agent(&agent))
             } else {
-                let pull_state =
-                    AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
-                (AttestationMode::Pull, pull_state)
+                match AgentState::from_operational_state(&agent.operational_state) {
+                    Ok(s) => (AttestationMode::Pull, s),
+                    Err(e) => {
+                        tracing::warn!("search: skipping agent {id_str}: {e}");
+                        continue;
+                    }
+                }
             };
 
-            let uuid = Uuid::parse_str(&agent.agent_id)
-                .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+            let uuid = match Uuid::parse_str(&agent.agent_id) {
+                Ok(u) => u,
+                Err(e) => {
+                    tracing::warn!("search: skipping agent {id_str}: invalid UUID: {e}");
+                    continue;
+                }
+            };
+
+            let needs_registrar =
+                agent.ip.as_deref().unwrap_or("").is_empty() || agent.port.unwrap_or(0) == 0;
+            let registrar_agent = if needs_registrar {
+                state.keylime().get_registrar_agent(id_str).await.ok()
+            } else {
+                None
+            };
+            let ip = agent.resolve_ip(registrar_agent.as_ref());
+            let port = agent.resolve_port(registrar_agent.as_ref());
+            let (last_attestation, failure_count) = if is_push {
+                let last = agent
+                    .last_successful_attestation
+                    .or(agent.last_received_quote)
+                    .filter(|&ts| ts > 0)
+                    .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+                let failures = agent.consecutive_attestation_failures.unwrap_or_else(|| {
+                    if agent_state.is_failed() {
+                        1
+                    } else {
+                        0
+                    }
+                });
+                (last, failures)
+            } else {
+                (None, if agent_state.is_failed() { 1 } else { 0 })
+            };
 
             results.push(AgentSummary {
                 id: uuid,
-                ip: agent.ip.clone(),
+                ip,
+                port,
                 state: agent_state,
                 attestation_mode: mode,
-                last_attestation: None,
+                last_attestation,
                 assigned_policy: agent.ima_policy.clone(),
                 mb_policy: agent.mb_policy.clone(),
-                failure_count: if agent_state.is_failed() { 1 } else { 0 },
+                failure_count,
             });
         }
     }
@@ -210,16 +303,16 @@ pub async fn agent_action(
     let id_str = id.to_string();
     match action.as_str() {
         "reactivate" => {
-            state.keylime.reactivate_agent(&id_str).await?;
+            state.keylime().reactivate_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         "delete" => {
-            state.keylime.delete_agent(&id_str).await?;
+            state.keylime().delete_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         "stop" => {
             // Stop uses the same PUT endpoint with a different state
-            state.keylime.reactivate_agent(&id_str).await?;
+            state.keylime().reactivate_agent(&id_str).await?;
             Ok(Json(ApiResponse::ok(())))
         }
         _ => Err(AppError::BadRequest(format!(
@@ -245,9 +338,9 @@ pub async fn bulk_action(
     for id in &body.agent_ids {
         let id_str = id.to_string();
         let result = match body.action.as_str() {
-            "reactivate" => state.keylime.reactivate_agent(&id_str).await,
-            "delete" => state.keylime.delete_agent(&id_str).await,
-            "stop" => state.keylime.reactivate_agent(&id_str).await,
+            "reactivate" => state.keylime().reactivate_agent(&id_str).await,
+            "delete" => state.keylime().delete_agent(&id_str).await,
+            "stop" => state.keylime().reactivate_agent(&id_str).await,
             _ => {
                 return Err(AppError::BadRequest(format!(
                     "unknown action: {}. Valid actions: reactivate, delete, stop",
@@ -275,11 +368,11 @@ pub async fn get_timeline(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
-    let agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let agent_state = if agent.accept_attestations.is_some() {
+    let agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let agent_state = if agent.is_push_mode() {
         AgentState::from_push_agent(&agent)
     } else {
-        AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+        AgentState::from_operational_state(&agent.operational_state).map_err(AppError::Internal)?
     };
 
     // Generate synthetic timeline events based on agent state
@@ -319,7 +412,7 @@ pub async fn get_pcr_values(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let pcrs = state.keylime.get_agent_pcrs(&id_str).await?;
+    let pcrs = state.keylime().get_agent_pcrs(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "hash_alg": pcrs.hash_alg,
         "pcrs": pcrs.pcrs,
@@ -332,7 +425,7 @@ pub async fn get_ima_log(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let ima = state.keylime.get_agent_ima_log(&id_str).await?;
+    let ima = state.keylime().get_agent_ima_log(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "entries": ima.entries,
         "total": ima.entries.len(),
@@ -345,7 +438,7 @@ pub async fn get_boot_log(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let boot = state.keylime.get_agent_boot_log(&id_str).await?;
+    let boot = state.keylime().get_agent_boot_log(&id_str).await?;
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "entries": boot.entries,
         "total": boot.entries.len(),
@@ -358,7 +451,7 @@ pub async fn get_agent_certs(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
-    let reg = state.keylime.get_registrar_agent(&id_str).await?;
+    let reg = state.keylime().get_registrar_agent(&id_str).await?;
 
     let certs = vec![
         serde_json::json!({
@@ -378,19 +471,108 @@ pub async fn get_agent_certs(
     Ok(Json(ApiResponse::ok(certs)))
 }
 
-/// GET /api/agents/:id/raw -- Raw JSON agent record (FR-020).
+/// GET /api/agents/:id/raw -- Combined raw data from all sources (FR-020).
 pub async fn get_raw_data(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let verifier_agent = state.keylime.get_verifier_agent(&id_str).await?;
-    let registrar_agent = state.keylime.get_registrar_agent(&id_str).await.ok();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
+
+    let backend = build_backend_summary(&state, &id_str, &verifier_agent, &registrar_agent)?;
 
     let raw = serde_json::json!({
+        "backend": backend,
         "verifier": verifier_agent,
         "registrar": registrar_agent,
     });
 
     Ok(Json(ApiResponse::ok(raw)))
+}
+
+/// GET /api/agents/:id/raw/backend -- Backend-computed agent summary (FR-020).
+pub async fn get_raw_backend(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
+
+    let backend = build_backend_summary(&state, &id_str, &verifier_agent, &registrar_agent)?;
+    Ok(Json(ApiResponse::ok(backend)))
+}
+
+/// GET /api/agents/:id/raw/registrar -- Raw Registrar API JSON (FR-020).
+pub async fn get_raw_registrar(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await?;
+    let value =
+        serde_json::to_value(registrar_agent).map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(Json(ApiResponse::ok(value)))
+}
+
+/// GET /api/agents/:id/raw/verifier -- Raw Verifier API JSON (FR-020).
+pub async fn get_raw_verifier(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let value =
+        serde_json::to_value(verifier_agent).map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(Json(ApiResponse::ok(value)))
+}
+
+/// Build the merged agent summary that the dashboard backend computes.
+fn build_backend_summary(
+    _state: &AppState,
+    id_str: &str,
+    verifier_agent: &crate::keylime::models::VerifierAgent,
+    registrar_agent: &Option<crate::keylime::models::RegistrarAgent>,
+) -> AppResult<serde_json::Value> {
+    let is_push = verifier_agent.is_push_mode();
+
+    let (mode, agent_state) = if is_push {
+        (
+            AttestationMode::Push,
+            AgentState::from_push_agent(verifier_agent),
+        )
+    } else {
+        let pull_state = AgentState::from_operational_state(&verifier_agent.operational_state)
+            .map_err(AppError::Internal)?;
+        (AttestationMode::Pull, pull_state)
+    };
+
+    let mut summary = serde_json::json!({
+        "id": id_str,
+        "ip": verifier_agent.resolve_ip(registrar_agent.as_ref()),
+        "port": verifier_agent.resolve_port(registrar_agent.as_ref()),
+        "state": agent_state,
+        "attestation_mode": mode,
+        "hash_alg": verifier_agent.hash_alg,
+        "enc_alg": verifier_agent.enc_alg,
+        "sign_alg": verifier_agent.sign_alg,
+        "ima_pcrs": verifier_agent.ima_pcrs,
+        "ima_policy": verifier_agent.ima_policy,
+        "mb_policy": verifier_agent.mb_policy,
+        "tpm_policy": verifier_agent.tpm_policy,
+        "accept_tpm_hash_algs": verifier_agent.accept_tpm_hash_algs,
+        "accept_tpm_encryption_algs": verifier_agent.accept_tpm_encryption_algs,
+        "accept_tpm_signing_algs": verifier_agent.accept_tpm_signing_algs,
+    });
+
+    if let Some(reg) = registrar_agent {
+        if let Some(obj) = summary.as_object_mut() {
+            obj.insert("ek_tpm".into(), serde_json::json!(reg.ek_tpm));
+            obj.insert("aik_tpm".into(), serde_json::json!(reg.aik_tpm));
+            obj.insert("regcount".into(), serde_json::json!(reg.regcount));
+        }
+    }
+
+    Ok(summary)
 }

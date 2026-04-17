@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Top-level application configuration.
@@ -24,7 +24,7 @@ pub struct ServerConfig {
     pub tls_key: Option<PathBuf>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct KeylimeConfig {
     pub verifier_url: String,
     pub registrar_url: String,
@@ -35,7 +35,7 @@ pub struct KeylimeConfig {
     pub circuit_breaker: CircuitBreakerConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MtlsConfig {
     pub cert: PathBuf,
     /// Path to private key or HSM/Vault URI (SR-005, SR-006).
@@ -43,7 +43,7 @@ pub struct MtlsConfig {
     pub ca_cert: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CircuitBreakerConfig {
     #[serde(default = "default_failure_threshold")]
     pub failure_threshold: u32,

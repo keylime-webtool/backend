@@ -9,3 +9,4 @@ pub mod integrations;
 pub mod kpis;
 pub mod performance;
 pub mod policies;
+pub mod settings;
