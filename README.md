@@ -165,6 +165,83 @@ curl http://localhost:8080/api/compliance/reports/nist-sp-800-155 | jq
 curl http://localhost:8080/api/integrations/durable | jq
 curl http://localhost:8080/api/integrations/revocation-channels | jq
 curl http://localhost:8080/api/integrations/siem | jq
+
+# Agent actions (reactivate, stop, delete)
+curl -X POST http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/actions/reactivate | jq
+curl -X POST http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/actions/stop | jq
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"agent_ids":["d432fbb3-d2f1-4a97-9ef7-75bd81c00000"],"action":"reactivate"}' \
+  http://localhost:8080/api/agents/bulk | jq
+
+# Alerts
+curl http://localhost:8080/api/alerts | jq
+curl "http://localhost:8080/api/alerts?severity=critical" | jq
+curl http://localhost:8080/api/alerts/summary | jq
+curl http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000001 | jq
+curl -X POST http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000001/acknowledge | jq
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"assigned_to":"analyst@example.com"}' \
+  http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000002/investigate | jq
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"resolution":"Root cause identified"}' \
+  http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000005/resolve | jq
+curl -X POST http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000003/dismiss | jq
+curl -X POST http://localhost:8080/api/alerts/a0000001-0000-4000-8000-000000000001/escalate | jq
+curl http://localhost:8080/api/alerts/notifications | jq                    # stub
+curl -X PUT -H "Content-Type: application/json" \
+  -d '{"attestation_success_rate":0.95,"cert_expiry_days":30}' \
+  http://localhost:8080/api/alerts/thresholds | jq                          # stub
+
+# Certificate details (ID from the /api/certificates list)
+CERT_ID=$(curl -sf http://localhost:8080/api/certificates | jq -r '.data[0].id')
+curl http://localhost:8080/api/certificates/$CERT_ID | jq
+curl -X POST http://localhost:8080/api/certificates/$CERT_ID/renew | jq    # stub
+
+# Audit log (stubs -- not yet implemented)
+curl http://localhost:8080/api/audit-log | jq
+curl http://localhost:8080/api/audit-log/verify | jq
+curl http://localhost:8080/api/audit-log/export | jq
+
+# Settings
+curl http://localhost:8080/api/settings/keylime | jq
+curl -X PUT -H "Content-Type: application/json" \
+  -d '{"verifier_url":"http://localhost:3000","registrar_url":"http://localhost:3001"}' \
+  http://localhost:8080/api/settings/keylime | jq
+curl http://localhost:8080/api/settings/certificates | jq
+curl -X PUT -H "Content-Type: application/json" -d '{}' \
+  http://localhost:8080/api/settings/certificates | jq
+
+# Attestation incidents (stubs -- not yet implemented)
+curl http://localhost:8080/api/attestations/incidents | jq
+curl http://localhost:8080/api/attestations/incidents/00000000-0000-4000-8000-000000000001 | jq
+curl -X POST http://localhost:8080/api/attestations/incidents/00000000-0000-4000-8000-000000000001/rollback | jq
+
+# Policy management (stubs -- not yet implemented)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"name":"test-policy","kind":"ima","content":"..."}' \
+  http://localhost:8080/api/policies | jq
+curl -X PUT -H "Content-Type: application/json" \
+  -d '{"content":"..."}' \
+  http://localhost:8080/api/policies/production-v1 | jq
+curl -X DELETE http://localhost:8080/api/policies/production-v1 | jq
+curl http://localhost:8080/api/policies/production-v1/versions | jq
+curl http://localhost:8080/api/policies/production-v1/diff | jq
+curl -X POST http://localhost:8080/api/policies/production-v1/rollback/1 | jq
+curl -X POST http://localhost:8080/api/policies/changes/change-001/approve | jq
+
+# Compliance export (stub)
+curl -X POST "http://localhost:8080/api/compliance/reports/nist-sp-800-155/export?format=pdf" | jq
+
+# Authentication (stubs -- not yet implemented)
+curl -X POST http://localhost:8080/api/auth/login | jq
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"code":"auth-code","state":"csrf-state"}' \
+  http://localhost:8080/api/auth/callback | jq
+curl -X POST http://localhost:8080/api/auth/refresh | jq
+curl -X POST http://localhost:8080/api/auth/logout | jq
+
+# WebSocket (real-time events -- use websocat or similar tool)
+# websocat ws://localhost:8080/ws/events
 ```
 
 The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).
