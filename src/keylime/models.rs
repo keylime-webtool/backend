@@ -41,9 +41,9 @@ pub struct VerifierAgent {
     #[serde(default)]
     pub has_runtime_policy: Option<i32>,
     // Legacy fields — present in some Keylime versions
-    #[serde(default)]
+    #[serde(default, alias = "runtime_policy_name")]
     pub ima_policy: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "mb_policy_name")]
     pub mb_policy: Option<String>,
     #[serde(default)]
     pub hash_alg: String,
