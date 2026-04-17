@@ -65,6 +65,7 @@ pub async fn list_agents(
         };
 
         let ip = agent.resolve_ip(None);
+        let port = agent.resolve_port(None);
         let (last_attestation, failure_count) = if is_push {
             let last = agent
                 .last_successful_attestation
@@ -79,6 +80,7 @@ pub async fn list_agents(
         summaries.push(AgentSummary {
             id: uuid,
             ip,
+            port,
             state: agent_state,
             attestation_mode: mode,
             last_attestation,
@@ -236,6 +238,7 @@ pub async fn search_agents(
             };
 
             let ip = agent.resolve_ip(None);
+            let port = agent.resolve_port(None);
             let (last_attestation, failure_count) = if is_push {
                 let last = agent
                     .last_successful_attestation
@@ -250,6 +253,7 @@ pub async fn search_agents(
             results.push(AgentSummary {
                 id: uuid,
                 ip,
+                port,
                 state: agent_state,
                 attestation_mode: mode,
                 last_attestation,
