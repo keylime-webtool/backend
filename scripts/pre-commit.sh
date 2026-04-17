@@ -7,6 +7,7 @@
 #   - cargo-audit.yml   (security audit)
 #   - cargo-machete.yml (unused dependencies)
 #   - shellcheck.yml    (shell script linting)
+#   - curl-integration.yaml (end-to-end curl tests)
 #
 # Usage:
 #   bash scripts/pre-commit.sh          # run all checks
@@ -46,6 +47,21 @@ run_check() {
         # Re-run to show output on failure
         echo ""
         "$@" 2>&1 || true
+        echo ""
+        ERRORS=$((ERRORS + 1))
+    fi
+}
+
+run_check_once() {
+    local label="$1"
+    shift
+    local output
+    if output=$("$@" 2>&1); then
+        pass "$label"
+    else
+        fail "$label"
+        echo ""
+        echo "$output"
         echo ""
         ERRORS=$((ERRORS + 1))
     fi
@@ -124,6 +140,18 @@ if command -v shellcheck >/dev/null 2>&1; then
     fi
 else
     skip "shellcheck" "shellcheck not installed"
+fi
+
+# ── 7. Curl integration tests (curl-integration.yaml) ───────────────
+header "Curl integration tests"
+if [ "$QUICK" -eq 1 ]; then
+    skip "curl integration" "--quick mode"
+elif ! command -v mockoon-cli >/dev/null 2>&1; then
+    skip "curl integration" "mockoon-cli not installed"
+elif ! command -v jq >/dev/null 2>&1; then
+    skip "curl integration" "jq not installed"
+else
+    run_check_once "curl integration" bash tests/curl_integration_test.sh
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
