@@ -77,8 +77,15 @@ pub async fn list_agents(
             let last = agent
                 .last_successful_attestation
                 .or(agent.last_received_quote)
+                .filter(|&ts| ts > 0)
                 .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-            let failures = agent.consecutive_attestation_failures.unwrap_or(0);
+            let failures = agent.consecutive_attestation_failures.unwrap_or_else(|| {
+                if agent_state.is_failed() {
+                    1
+                } else {
+                    0
+                }
+            });
             (last, failures)
         } else {
             (None, if agent_state.is_failed() { 1 } else { 0 })
@@ -257,8 +264,15 @@ pub async fn search_agents(
                 let last = agent
                     .last_successful_attestation
                     .or(agent.last_received_quote)
+                    .filter(|&ts| ts > 0)
                     .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-                let failures = agent.consecutive_attestation_failures.unwrap_or(0);
+                let failures = agent.consecutive_attestation_failures.unwrap_or_else(|| {
+                    if agent_state.is_failed() {
+                        1
+                    } else {
+                        0
+                    }
+                });
                 (last, failures)
             } else {
                 (None, if agent_state.is_failed() { 1 } else { 0 })
