@@ -244,7 +244,7 @@ async fn test_mockoon_verifier_list_policies() {
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().await.unwrap();
-    let names = body["results"]["policy_names"].as_array().unwrap();
+    let names = body["results"]["runtimepolicy names"].as_array().unwrap();
     assert_eq!(names.len(), 3);
     assert!(names.iter().any(|n| n == "production-v1"));
     assert!(names.iter().any(|n| n == "staging-v2"));

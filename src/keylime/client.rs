@@ -388,7 +388,7 @@ impl KeylimeClient {
 /// Policy list results from Verifier `GET /v2/allowlists/`.
 #[derive(Debug, serde::Deserialize)]
 struct PolicyListResults {
-    #[serde(default)]
+    #[serde(default, alias = "runtimepolicy names")]
     policy_names: Vec<String>,
 }
 

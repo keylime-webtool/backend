@@ -205,7 +205,7 @@ pub struct PushEvidence {
 pub struct RuntimePolicy {
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, alias = "tmp_policy")]
     pub tpm_policy: Option<serde_json::Value>,
     #[serde(default)]
     pub runtime_policy: Option<serde_json::Value>,

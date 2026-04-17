@@ -305,7 +305,7 @@
       "responses": [
         {
           "uuid": "resp-list-policies-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"policy_names\": [\"production-v1\", \"staging-v2\", \"measured-boot-v1\"]\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"runtimepolicy names\": [\"production-v1\", \"staging-v2\", \"measured-boot-v1\"]\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "List policy names",
@@ -341,7 +341,7 @@
       "responses": [
         {
           "uuid": "resp-get-policy-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"name\": \"production-v1\",\n    \"tpm_policy\": {\"mask\": \"0x408000\"},\n    \"runtime_policy\": {\"digests\": {}, \"excludes\": [], \"keyrings\": {}},\n    \"runtime_policy_key\": null\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"name\": \"production-v1\",\n    \"tmp_policy\": {\"mask\": \"0x408000\"},\n    \"runtime_policy\": {\"digests\": {}, \"excludes\": [], \"keyrings\": {}},\n    \"runtime_policy_key\": null\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "Get policy detail",
