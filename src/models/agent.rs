@@ -172,6 +172,7 @@ impl AgentState {
 pub struct AgentSummary {
     pub id: Uuid,
     pub ip: String,
+    pub port: u16,
     pub state: AgentState,
     pub attestation_mode: AttestationMode,
     pub last_attestation: Option<DateTime<Utc>>,
