@@ -30,22 +30,38 @@ pub async fn list_agents(
     // Fetch agent UUIDs from Verifier
     let agent_ids = state.keylime().list_verifier_agents().await?;
 
-    // Fetch detail for each agent to build summaries
+    // Fetch detail for each agent to build summaries.
+    // Skip agents that fail to fetch rather than failing the entire list.
     let mut summaries = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime().get_verifier_agent(id_str).await?;
+        let agent = match state.keylime().get_verifier_agent(id_str).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("skipping agent {id_str}: {e}");
+                continue;
+            }
+        };
         let is_push = agent.accept_attestations.is_some();
 
         let (mode, agent_state) = if is_push {
             (AttestationMode::Push, AgentState::from_push_agent(&agent))
         } else {
-            let pull_state =
-                AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
-            (AttestationMode::Pull, pull_state)
+            match AgentState::try_from(agent.operational_state) {
+                Ok(s) => (AttestationMode::Pull, s),
+                Err(e) => {
+                    tracing::warn!("skipping agent {id_str}: unknown state: {e}");
+                    continue;
+                }
+            }
         };
 
-        let uuid = Uuid::parse_str(&agent.agent_id)
-            .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+        let uuid = match Uuid::parse_str(&agent.agent_id) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("skipping agent {id_str}: invalid UUID: {e}");
+                continue;
+            }
+        };
 
         summaries.push(AgentSummary {
             id: uuid,
@@ -166,7 +182,13 @@ pub async fn search_agents(
 
     let mut results = Vec::new();
     for id_str in &agent_ids {
-        let agent = state.keylime().get_verifier_agent(id_str).await?;
+        let agent = match state.keylime().get_verifier_agent(id_str).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!("search: skipping agent {id_str}: {e}");
+                continue;
+            }
+        };
 
         // Match against UUID, IP
         let matches =
@@ -178,13 +200,22 @@ pub async fn search_agents(
             let (mode, agent_state) = if is_push {
                 (AttestationMode::Push, AgentState::from_push_agent(&agent))
             } else {
-                let pull_state =
-                    AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?;
-                (AttestationMode::Pull, pull_state)
+                match AgentState::try_from(agent.operational_state) {
+                    Ok(s) => (AttestationMode::Pull, s),
+                    Err(e) => {
+                        tracing::warn!("search: skipping agent {id_str}: unknown state: {e}");
+                        continue;
+                    }
+                }
             };
 
-            let uuid = Uuid::parse_str(&agent.agent_id)
-                .map_err(|e| AppError::Internal(format!("invalid agent UUID: {e}")))?;
+            let uuid = match Uuid::parse_str(&agent.agent_id) {
+                Ok(u) => u,
+                Err(e) => {
+                    tracing::warn!("search: skipping agent {id_str}: invalid UUID: {e}");
+                    continue;
+                }
+            };
 
             results.push(AgentSummary {
                 id: uuid,
