@@ -204,7 +204,7 @@ pub async fn assignment_matrix(
         if let Ok(agent) = state.keylime().get_verifier_agent(aid).await {
             matrix.push(serde_json::json!({
                 "agent_id": agent.agent_id,
-                "ip": agent.ip,
+                "ip": agent.ip.clone().unwrap_or_default(),
                 "ima_policy": agent.ima_policy,
                 "mb_policy": agent.mb_policy,
             }));

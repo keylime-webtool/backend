@@ -169,7 +169,7 @@ pub async fn get_summary(
 
 /// Derive attestation event counts from a single agent's current state.
 fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> AgentAttestation {
-    if agent.accept_attestations.is_some() {
+    if agent.is_push_mode() {
         // Push-mode agent: use attestation_count and consecutive_attestation_failures
         let total_count = agent.attestation_count.unwrap_or(0);
         let consecutive_failures = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
@@ -184,8 +184,8 @@ fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> Ag
         }
     } else {
         // Pull-mode agent: count current state as a single attestation event
-        let agent_state =
-            AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed);
+        let agent_state = AgentState::from_operational_state(&agent.operational_state)
+            .unwrap_or(AgentState::Failed);
         if agent_state.is_failed() {
             AgentAttestation {
                 successful: 0,
@@ -263,10 +263,11 @@ pub async fn list_attestations(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let agent_state = if agent.accept_attestations.is_some() {
+            let agent_state = if agent.is_push_mode() {
                 AgentState::from_push_agent(&agent)
             } else {
-                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+                AgentState::from_operational_state(&agent.operational_state)
+                    .unwrap_or(AgentState::Failed)
             };
             let is_failed = agent_state.is_failed();
 
@@ -306,10 +307,11 @@ pub async fn get_failures(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let agent_state = if agent.accept_attestations.is_some() {
+            let agent_state = if agent.is_push_mode() {
                 AgentState::from_push_agent(&agent)
             } else {
-                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+                AgentState::from_operational_state(&agent.operational_state)
+                    .unwrap_or(AgentState::Failed)
             };
             if agent_state.is_failed() {
                 let failure_type = match agent_state {
@@ -356,10 +358,10 @@ pub async fn get_pipeline(
 ) -> AppResult<Json<ApiResponse<Vec<PipelineResult>>>> {
     let id_str = agent_id.to_string();
     let agent = state.keylime().get_verifier_agent(&id_str).await?;
-    let agent_state = if agent.accept_attestations.is_some() {
+    let agent_state = if agent.is_push_mode() {
         AgentState::from_push_agent(&agent)
     } else {
-        AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+        AgentState::from_operational_state(&agent.operational_state).map_err(AppError::Internal)?
     };
 
     let is_failed = agent_state.is_failed();
@@ -425,11 +427,11 @@ pub async fn get_push_mode_analytics(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            if agent.accept_attestations.is_some() {
+            if agent.is_push_mode() {
                 let push_state = crate::models::agent::AgentState::from_push_agent(&agent);
                 push_agents.push(serde_json::json!({
                     "agent_id": agent.agent_id,
-                    "ip": agent.ip,
+                    "ip": agent.ip.clone().unwrap_or_default(),
                     "state": push_state,
                 }));
             }
@@ -451,12 +453,12 @@ pub async fn get_pull_mode_monitoring(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            if agent.accept_attestations.is_none() {
-                let agent_state =
-                    AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed);
+            if !agent.is_push_mode() {
+                let agent_state = AgentState::from_operational_state(&agent.operational_state)
+                    .unwrap_or(AgentState::Failed);
                 pull_agents.push(serde_json::json!({
                     "agent_id": agent.agent_id,
-                    "ip": agent.ip,
+                    "ip": agent.ip.clone().unwrap_or_default(),
                     "state": agent_state,
                 }));
             }
@@ -487,10 +489,11 @@ pub async fn get_state_machine(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let agent_state = if agent.accept_attestations.is_some() {
+            let agent_state = if agent.is_push_mode() {
                 AgentState::from_push_agent(&agent)
             } else {
-                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+                AgentState::from_operational_state(&agent.operational_state)
+                    .unwrap_or(AgentState::Failed)
             };
             {
                 let name = serde_json::to_string(&agent_state)

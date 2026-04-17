@@ -41,15 +41,15 @@ pub async fn list_agents(
                 continue;
             }
         };
-        let is_push = agent.accept_attestations.is_some();
+        let is_push = agent.is_push_mode();
 
         let (mode, agent_state) = if is_push {
             (AttestationMode::Push, AgentState::from_push_agent(&agent))
         } else {
-            match AgentState::try_from(agent.operational_state) {
+            match AgentState::from_operational_state(&agent.operational_state) {
                 Ok(s) => (AttestationMode::Pull, s),
                 Err(e) => {
-                    tracing::warn!("skipping agent {id_str}: unknown state: {e}");
+                    tracing::warn!("skipping agent {id_str}: {e}");
                     continue;
                 }
             }
@@ -65,7 +65,7 @@ pub async fn list_agents(
 
         summaries.push(AgentSummary {
             id: uuid,
-            ip: agent.ip.clone(),
+            ip: agent.ip.clone().unwrap_or_default(),
             state: agent_state,
             attestation_mode: mode,
             last_attestation: None,
@@ -123,7 +123,7 @@ pub async fn get_agent(
     let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
     let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
 
-    let is_push = verifier_agent.accept_attestations.is_some();
+    let is_push = verifier_agent.is_push_mode();
 
     let (mode, agent_state) = if is_push {
         (
@@ -131,16 +131,16 @@ pub async fn get_agent(
             AgentState::from_push_agent(&verifier_agent),
         )
     } else {
-        let pull_state =
-            AgentState::try_from(verifier_agent.operational_state).map_err(AppError::Internal)?;
+        let pull_state = AgentState::from_operational_state(&verifier_agent.operational_state)
+            .map_err(AppError::Internal)?;
         (AttestationMode::Pull, pull_state)
     };
 
     // Build a combined JSON response with data from both sources
     let mut combined = serde_json::json!({
         "id": id_str,
-        "ip": verifier_agent.ip,
-        "port": verifier_agent.port,
+        "ip": verifier_agent.ip.unwrap_or_default(),
+        "port": verifier_agent.port.unwrap_or_default(),
         "state": agent_state,
         "attestation_mode": mode,
         "hash_alg": verifier_agent.hash_alg,
@@ -191,19 +191,24 @@ pub async fn search_agents(
         };
 
         // Match against UUID, IP
-        let matches =
-            agent.agent_id.to_lowercase().contains(&q) || agent.ip.to_lowercase().contains(&q);
+        let matches = agent.agent_id.to_lowercase().contains(&q)
+            || agent
+                .ip
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(&q);
 
         if matches {
-            let is_push = agent.accept_attestations.is_some();
+            let is_push = agent.is_push_mode();
 
             let (mode, agent_state) = if is_push {
                 (AttestationMode::Push, AgentState::from_push_agent(&agent))
             } else {
-                match AgentState::try_from(agent.operational_state) {
+                match AgentState::from_operational_state(&agent.operational_state) {
                     Ok(s) => (AttestationMode::Pull, s),
                     Err(e) => {
-                        tracing::warn!("search: skipping agent {id_str}: unknown state: {e}");
+                        tracing::warn!("search: skipping agent {id_str}: {e}");
                         continue;
                     }
                 }
@@ -219,7 +224,7 @@ pub async fn search_agents(
 
             results.push(AgentSummary {
                 id: uuid,
-                ip: agent.ip.clone(),
+                ip: agent.ip.clone().unwrap_or_default(),
                 state: agent_state,
                 attestation_mode: mode,
                 last_attestation: None,
@@ -307,10 +312,10 @@ pub async fn get_timeline(
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
     let id_str = id.to_string();
     let agent = state.keylime().get_verifier_agent(&id_str).await?;
-    let agent_state = if agent.accept_attestations.is_some() {
+    let agent_state = if agent.is_push_mode() {
         AgentState::from_push_agent(&agent)
     } else {
-        AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+        AgentState::from_operational_state(&agent.operational_state).map_err(AppError::Internal)?
     };
 
     // Generate synthetic timeline events based on agent state

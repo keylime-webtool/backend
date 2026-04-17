@@ -83,10 +83,10 @@ async fn test_mockoon_verifier_healthy_agent() {
         body.results.agent_id,
         "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
     );
-    assert_eq!(body.results.ip, "10.0.1.10");
-    assert_eq!(body.results.port, 9002);
+    assert_eq!(body.results.ip, Some("10.0.1.10".to_string()));
+    assert_eq!(body.results.port, Some(9002));
     // operational_state 3 = GET_QUOTE (healthy)
-    assert_eq!(body.results.operational_state, 3);
+    assert_eq!(body.results.operational_state, serde_json::json!(3));
     assert_eq!(body.results.hash_alg, "sha256");
     assert_eq!(body.results.ima_policy.as_deref(), Some("production-v1"));
     assert!(body.results.mb_policy.is_none());
@@ -110,8 +110,8 @@ async fn test_mockoon_verifier_failed_agent() {
 
     let body: VerifierResponse<VerifierAgent> = resp.json().await.unwrap();
     // operational_state 7 = FAILED
-    assert_eq!(body.results.operational_state, 7);
-    assert_eq!(body.results.ip, "10.0.1.20");
+    assert_eq!(body.results.operational_state, serde_json::json!(7));
+    assert_eq!(body.results.ip, Some("10.0.1.20".to_string()));
 }
 
 #[tokio::test]
@@ -132,7 +132,7 @@ async fn test_mockoon_verifier_push_mode_agent() {
 
     let body: VerifierResponse<VerifierAgent> = resp.json().await.unwrap();
     // Push-mode agent: operational_state 5 = PROVIDE_V, but has push-specific fields
-    assert_eq!(body.results.operational_state, 5);
+    assert_eq!(body.results.operational_state, serde_json::json!(5));
     assert_eq!(body.results.hash_alg, "sha384");
     assert_eq!(body.results.ima_policy.as_deref(), Some("staging-v2"));
     assert_eq!(body.results.mb_policy.as_deref(), Some("measured-boot-v1"));
@@ -165,7 +165,7 @@ async fn test_mockoon_verifier_push_mode_failed_agent() {
         body.results.agent_id,
         "b2c3d4e5-a1b0-8765-4321-fedcba987654"
     );
-    assert_eq!(body.results.ip, "10.0.1.40");
+    assert_eq!(body.results.ip, Some("10.0.1.40".to_string()));
     // Push-specific fields: failed push agent (timeout + consecutive failures)
     assert_eq!(body.results.accept_attestations, Some(false));
     assert_eq!(body.results.attestation_count, Some(15));
@@ -193,8 +193,8 @@ async fn test_mockoon_verifier_push_mode_ok_agent_2() {
         body.results.agent_id,
         "c5d6e7f8-a9b0-4321-8765-abcdef012345"
     );
-    assert_eq!(body.results.ip, "10.0.1.50");
-    assert_eq!(body.results.operational_state, 5);
+    assert_eq!(body.results.ip, Some("10.0.1.50".to_string()));
+    assert_eq!(body.results.operational_state, serde_json::json!(5));
     assert_eq!(body.results.hash_alg, "sha256");
     assert_eq!(body.results.ima_policy.as_deref(), Some("production-v1"));
     assert!(body.results.mb_policy.is_none());
@@ -339,8 +339,8 @@ async fn test_mockoon_registrar_agent_detail() {
         body.results.agent_id,
         "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
     );
-    assert_eq!(body.results.ip, "10.0.1.10");
-    assert_eq!(body.results.port, 9002);
+    assert_eq!(body.results.ip, Some("10.0.1.10".to_string()));
+    assert_eq!(body.results.port, Some(9002));
     assert_eq!(body.results.regcount, 1);
     assert!(!body.results.ek_tpm.is_empty());
     assert!(!body.results.aik_tpm.is_empty());
@@ -367,7 +367,7 @@ async fn test_mockoon_registrar_failed_agent_detail() {
         body.results.agent_id,
         "a1b2c3d4-0000-1111-2222-333344445555"
     );
-    assert_eq!(body.results.ip, "10.0.1.20");
+    assert_eq!(body.results.ip, Some("10.0.1.20".to_string()));
     // Failed agent has higher regcount (re-registered multiple times)
     assert_eq!(body.results.regcount, 3);
 }
@@ -393,7 +393,7 @@ async fn test_mockoon_registrar_push_agent_detail() {
         body.results.agent_id,
         "f7e6d5c4-b3a2-9180-7654-321098765432"
     );
-    assert_eq!(body.results.ip, "10.0.1.30");
+    assert_eq!(body.results.ip, Some("10.0.1.30".to_string()));
     assert_eq!(body.results.regcount, 1);
 }
 
@@ -418,7 +418,7 @@ async fn test_mockoon_registrar_push_failed_agent_detail() {
         body.results.agent_id,
         "b2c3d4e5-a1b0-8765-4321-fedcba987654"
     );
-    assert_eq!(body.results.ip, "10.0.1.40");
+    assert_eq!(body.results.ip, Some("10.0.1.40".to_string()));
     assert_eq!(body.results.regcount, 2);
 }
 
@@ -443,6 +443,6 @@ async fn test_mockoon_registrar_push_ok_agent_2_detail() {
         body.results.agent_id,
         "c5d6e7f8-a9b0-4321-8765-abcdef012345"
     );
-    assert_eq!(body.results.ip, "10.0.1.50");
+    assert_eq!(body.results.ip, Some("10.0.1.50".to_string()));
     assert_eq!(body.results.regcount, 1);
 }

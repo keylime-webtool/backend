@@ -21,10 +21,11 @@ pub async fn get_kpis(State(state): State<AppState>) -> AppResult<Json<ApiRespon
     for id_str in &agent_ids {
         match state.keylime().get_verifier_agent(id_str).await {
             Ok(agent) => {
-                let agent_state = if agent.accept_attestations.is_some() {
+                let agent_state = if agent.is_push_mode() {
                     AgentState::from_push_agent(&agent)
                 } else {
-                    AgentState::try_from(agent.operational_state).map_err(AppError::Internal)?
+                    AgentState::from_operational_state(&agent.operational_state)
+                        .map_err(AppError::Internal)?
                 };
                 if agent_state.is_failed() {
                     failed += 1;

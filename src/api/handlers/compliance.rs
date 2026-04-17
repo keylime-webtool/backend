@@ -63,10 +63,11 @@ pub async fn get_report(
 
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let agent_state = if agent.accept_attestations.is_some() {
+            let agent_state = if agent.is_push_mode() {
                 AgentState::from_push_agent(&agent)
             } else {
-                AgentState::try_from(agent.operational_state).unwrap_or(AgentState::Failed)
+                AgentState::from_operational_state(&agent.operational_state)
+                    .unwrap_or(AgentState::Failed)
             };
             if agent_state.is_failed() {
                 non_compliant += 1;
