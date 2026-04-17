@@ -207,6 +207,13 @@ fi
 echo ""
 
 if [ "$NO_MOCKS" = false ]; then
+    # 0. Fail fast if the backend port is already in use
+    if curl -s --connect-timeout 2 "${BACKEND_URL}" > /dev/null 2>&1; then
+        echo "Error: ${BACKEND_URL} is already in use."
+        echo "Stop the running backend first, or use --no-mocks to test against it."
+        exit 1
+    fi
+
     # 1. Start Mockoon mocks
     start_mockoon_server "VERIFIER"  "${GIT_ROOT}/test-data/verifier.json"  "$VERIFIER_PORT"
     start_mockoon_server "REGISTRAR" "${GIT_ROOT}/test-data/registrar.json" "$REGISTRAR_PORT"
