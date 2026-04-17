@@ -178,81 +178,89 @@ impl KeylimeClient {
     pub async fn list_verifier_agents(&self) -> AppResult<Vec<String>> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/", self.verifier_url);
-        let result = self
+        let resp = self
             .get_json::<VerifierResponse<AgentListResults>>(&url)
-            .await;
-        self.record_result(&result).await;
-        Ok(result?.results.uuids)
+            .await?;
+        Ok(resp.results.uuids.into_iter().flatten().collect())
     }
 
     /// GET /v2/agents/{agent_id} -- agent detail from the Verifier.
+    ///
+    /// Handles two Keylime response formats:
+    /// - Nested: `results: { "uuid": { ...agent_data } }`
+    /// - Flat:   `results: { ...agent_data }`
     pub async fn get_verifier_agent(&self, agent_id: &str) -> AppResult<VerifierAgent> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
-        let result = self.get_json::<VerifierResponse<VerifierAgent>>(&url).await;
-        self.record_result(&result).await;
-        Ok(result?.results)
+        let resp = self
+            .get_json::<VerifierResponse<serde_json::Value>>(&url)
+            .await?;
+        extract_agent::<VerifierAgent>(resp.results, agent_id, |a, id| a.agent_id = id)
     }
 
     /// GET /v2/allowlists/ -- list policy names from the Verifier.
     pub async fn list_policies(&self) -> AppResult<Vec<String>> {
         self.check_circuit().await?;
         let url = format!("{}/v2/allowlists/", self.verifier_url);
-        let result = self
+        let resp = self
             .get_json::<VerifierResponse<PolicyListResults>>(&url)
-            .await;
-        self.record_result(&result).await;
-        Ok(result?.results.policy_names)
+            .await?;
+        Ok(resp.results.policy_names)
     }
 
     /// GET /v2/allowlists/{name} -- policy detail from the Verifier.
     pub async fn get_policy(&self, name: &str) -> AppResult<RuntimePolicy> {
         self.check_circuit().await?;
         let url = format!("{}/v2/allowlists/{}", self.verifier_url, name);
-        let result = self.get_json::<VerifierResponse<RuntimePolicy>>(&url).await;
-        self.record_result(&result).await;
-        Ok(result?.results)
+        let resp = self
+            .get_json::<VerifierResponse<RuntimePolicy>>(&url)
+            .await?;
+        Ok(resp.results)
     }
 
     /// GET /v2/agents/{agent_id}/pcrs -- PCR values (FR-021/022).
     pub async fn get_agent_pcrs(&self, agent_id: &str) -> AppResult<PcrResults> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}/pcrs", self.verifier_url, agent_id);
-        let result = self.get_json::<VerifierResponse<PcrResults>>(&url).await;
-        self.record_result(&result).await;
-        Ok(result?.results)
+        let resp = self.get_json::<VerifierResponse<PcrResults>>(&url).await?;
+        Ok(resp.results)
     }
 
     /// GET /v2/agents/{agent_id}/ima -- IMA log entries (FR-020).
     pub async fn get_agent_ima_log(&self, agent_id: &str) -> AppResult<ImaLogResults> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}/ima", self.verifier_url, agent_id);
-        let result = self.get_json::<VerifierResponse<ImaLogResults>>(&url).await;
-        self.record_result(&result).await;
-        Ok(result?.results)
+        let resp = self
+            .get_json::<VerifierResponse<ImaLogResults>>(&url)
+            .await?;
+        Ok(resp.results)
     }
 
     /// GET /v2/agents/{agent_id}/boot-log -- boot log entries (FR-020).
     pub async fn get_agent_boot_log(&self, agent_id: &str) -> AppResult<BootLogResults> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}/boot-log", self.verifier_url, agent_id);
-        let result = self
+        let resp = self
             .get_json::<VerifierResponse<BootLogResults>>(&url)
-            .await;
-        self.record_result(&result).await;
-        Ok(result?.results)
+            .await?;
+        Ok(resp.results)
     }
 
     /// DELETE /v2/agents/{agent_id} -- remove agent from verifier (FR-019).
     pub async fn delete_agent(&self, agent_id: &str) -> AppResult<()> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
-        let resp = self.http.delete(&url).send().await?;
-        let ok = resp.status().is_success();
-        if ok {
-            self.verifier_circuit.record_success().await;
-        } else {
-            self.verifier_circuit.record_failure().await;
+        let resp = match self.http.delete(&url).send().await {
+            Ok(r) => {
+                self.verifier_circuit.record_success().await;
+                r
+            }
+            Err(e) => {
+                self.verifier_circuit.record_failure().await;
+                return Err(e.into());
+            }
+        };
+        if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
             return Err(AppError::NotFound(format!(
@@ -266,17 +274,23 @@ impl KeylimeClient {
     pub async fn reactivate_agent(&self, agent_id: &str) -> AppResult<()> {
         self.check_circuit().await?;
         let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
-        let resp = self
+        let resp = match self
             .http
             .put(&url)
             .json(&serde_json::json!({}))
             .send()
-            .await?;
-        let ok = resp.status().is_success();
-        if ok {
-            self.verifier_circuit.record_success().await;
-        } else {
-            self.verifier_circuit.record_failure().await;
+            .await
+        {
+            Ok(r) => {
+                self.verifier_circuit.record_success().await;
+                r
+            }
+            Err(e) => {
+                self.verifier_circuit.record_failure().await;
+                return Err(e.into());
+            }
+        };
+        if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
             return Err(AppError::NotFound(format!(
@@ -296,24 +310,40 @@ impl KeylimeClient {
         let resp = self
             .get_json::<VerifierResponse<AgentListResults>>(&url)
             .await?;
-        Ok(resp.results.uuids)
+        Ok(resp.results.uuids.into_iter().flatten().collect())
     }
 
     /// GET /v2/agents/{agent_id} -- agent registration data from the Registrar.
+    ///
+    /// Handles both nested and flat response formats (same as Verifier).
     pub async fn get_registrar_agent(&self, agent_id: &str) -> AppResult<RegistrarAgent> {
         let url = format!("{}/v2/agents/{}", self.registrar_url, agent_id);
         let resp = self
-            .get_json::<VerifierResponse<RegistrarAgent>>(&url)
+            .get_json::<VerifierResponse<serde_json::Value>>(&url)
             .await?;
-        Ok(resp.results)
+        extract_agent::<RegistrarAgent>(resp.results, agent_id, |a, id| a.agent_id = id)
     }
 
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
 
+    /// Issue a GET request and deserialize the JSON body.
+    ///
+    /// Circuit breaker: only **network** errors (connection refused, timeout)
+    /// count as failures. A successful HTTP response that fails to deserialize
+    /// is a client-side issue and must not trip the breaker.
     async fn get_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> AppResult<T> {
-        let resp = self.http.get(url).send().await?;
+        let resp = match self.http.get(url).send().await {
+            Ok(r) => {
+                self.verifier_circuit.record_success().await;
+                r
+            }
+            Err(e) => {
+                self.verifier_circuit.record_failure().await;
+                return Err(e.into());
+            }
+        };
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
@@ -321,7 +351,13 @@ impl KeylimeClient {
                 "Keylime API returned {status}: {body}"
             )));
         }
-        Ok(resp.json::<T>().await?)
+        let body = resp.text().await.map_err(|e| {
+            AppError::Internal(format!("failed to read response body from {url}: {e}"))
+        })?;
+        serde_json::from_str::<T>(&body).map_err(|e| {
+            tracing::error!("JSON parse error for {url}: {e}\nBody: {body}");
+            AppError::Internal(format!("failed to parse Keylime response from {url}: {e}"))
+        })
     }
 
     async fn check_circuit(&self) -> AppResult<()> {
@@ -332,18 +368,12 @@ impl KeylimeClient {
         }
         Ok(())
     }
-
-    async fn record_result<T>(&self, result: &AppResult<T>) {
-        match result {
-            Ok(_) => self.verifier_circuit.record_success().await,
-            Err(_) => self.verifier_circuit.record_failure().await,
-        }
-    }
 }
 
 /// Policy list results from Verifier `GET /v2/allowlists/`.
 #[derive(Debug, serde::Deserialize)]
 struct PolicyListResults {
+    #[serde(default)]
     policy_names: Vec<String>,
 }
 
@@ -362,6 +392,38 @@ impl KeylimeClient {
     pub fn mtls_config(&self) -> Option<&MtlsConfig> {
         self.mtls_config.as_ref()
     }
+}
+
+/// Extract an agent from a `results` value that may be in nested
+/// (`{ "uuid": { ...data } }`) or flat (`{ ...data }`) format.
+///
+/// Nested is detected when the object has exactly one key whose value is
+/// itself an object.  Everything else is treated as flat.
+fn extract_agent<T: serde::de::DeserializeOwned>(
+    results: serde_json::Value,
+    agent_id: &str,
+    set_id: impl FnOnce(&mut T, String),
+) -> AppResult<T> {
+    // Try nested format first: single key whose value is an object.
+    if let Some(obj) = results.as_object() {
+        if obj.len() == 1 {
+            if let Some((key, val)) = obj.iter().next() {
+                if val.is_object() {
+                    let mut agent: T = serde_json::from_value(val.clone()).map_err(|e| {
+                        AppError::Internal(format!("failed to parse nested agent data: {e}"))
+                    })?;
+                    set_id(&mut agent, key.clone());
+                    return Ok(agent);
+                }
+            }
+        }
+    }
+
+    // Flat format: results IS the agent data.
+    let mut agent: T = serde_json::from_value(results)
+        .map_err(|e| AppError::Internal(format!("failed to parse agent data: {e}")))?;
+    set_id(&mut agent, agent_id.to_string());
+    Ok(agent)
 }
 
 impl std::fmt::Debug for KeylimeClient {
