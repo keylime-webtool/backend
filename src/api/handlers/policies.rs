@@ -14,28 +14,44 @@ pub async fn list_policies(
 ) -> AppResult<Json<ApiResponse<Vec<Policy>>>> {
     let policy_names = state.keylime().list_policies().await?;
 
+    // Fetch all agents once — avoids O(policies × agents) API calls.
+    let agent_ids = state.keylime().list_verifier_agents().await?;
+    let mut agents = Vec::new();
+    for id in &agent_ids {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id).await {
+            agents.push(agent);
+        }
+    }
+
     let mut policies = Vec::new();
     for name in &policy_names {
         let runtime = state.keylime().get_policy(name).await?;
-
-        // Count how many agents use this policy
-        let agent_ids = state.keylime().list_verifier_agents().await?;
-        let mut assigned: u64 = 0;
-        for id in &agent_ids {
-            if let Ok(agent) = state.keylime().get_verifier_agent(id).await {
-                if agent.ima_policy.as_deref() == Some(name)
-                    || agent.mb_policy.as_deref() == Some(name)
-                {
-                    assigned += 1;
-                }
-            }
-        }
 
         let kind = if name.contains("boot") {
             PolicyKind::MeasuredBoot
         } else {
             PolicyKind::Ima
         };
+
+        // With mock data (ima_policy/mb_policy fields populated), matching is
+        // exact. With real Keylime v2 (only has_runtime_policy/has_mb_refstate
+        // flags), this counts agents that have *any* policy of this type —
+        // approximate when multiple policies of the same kind exist.
+        let assigned = agents
+            .iter()
+            .filter(|agent| match kind {
+                PolicyKind::Ima => agent
+                    .ima_policy
+                    .as_deref()
+                    .map(|p| p == name.as_str())
+                    .unwrap_or_else(|| agent.has_runtime_policy == Some(1)),
+                PolicyKind::MeasuredBoot => agent
+                    .mb_policy
+                    .as_deref()
+                    .map(|p| p == name.as_str())
+                    .unwrap_or_else(|| agent.has_mb_refstate == Some(1)),
+            })
+            .count() as u64;
 
         let entry_count = runtime
             .runtime_policy
@@ -155,14 +171,33 @@ pub async fn impact_analysis(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<ApiResponse<ImpactAnalysis>>> {
-    // Count agents using this policy
+    let kind = if id.contains("boot") {
+        PolicyKind::MeasuredBoot
+    } else {
+        PolicyKind::Ima
+    };
+
     let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut affected: u64 = 0;
     let mut unaffected: u64 = 0;
 
     for aid in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(aid).await {
-            if agent.ima_policy.as_deref() == Some(&id) || agent.mb_policy.as_deref() == Some(&id) {
+            // Check exact policy name first (mock data), fall back to
+            // type-level flag (real Keylime v2 — approximate).
+            let matches = match kind {
+                PolicyKind::Ima => agent
+                    .ima_policy
+                    .as_deref()
+                    .map(|p| p == id.as_str())
+                    .unwrap_or_else(|| agent.has_runtime_policy == Some(1)),
+                PolicyKind::MeasuredBoot => agent
+                    .mb_policy
+                    .as_deref()
+                    .map(|p| p == id.as_str())
+                    .unwrap_or_else(|| agent.has_mb_refstate == Some(1)),
+            };
+            if matches {
                 affected += 1;
             } else {
                 unaffected += 1;
@@ -207,6 +242,8 @@ pub async fn assignment_matrix(
                 "ip": agent.ip.clone().unwrap_or_default(),
                 "ima_policy": agent.ima_policy,
                 "mb_policy": agent.mb_policy,
+                "has_runtime_policy": agent.has_runtime_policy,
+                "has_mb_refstate": agent.has_mb_refstate,
             }));
         }
     }
