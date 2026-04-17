@@ -270,6 +270,24 @@ run_test "  state = FAIL"               \
 run_test "  mode = Push"                \
     "/api/agents/b2c3d4e5-a1b0-8765-4321-fedcba987654" \
     ".data.attestation_mode" "Push"
+NULLIP_ID="e6f7a8b9-c0d1-2345-6789-aabbccddeeff"
+run_test "Get null-ip push agent (registrar fallback)" \
+    "/api/agents/${NULLIP_ID}"
+run_test "  ip falls back to registrar" \
+    "/api/agents/${NULLIP_ID}" \
+    ".data.ip" "10.0.1.60"
+run_test "  port falls back to registrar" \
+    "/api/agents/${NULLIP_ID}" \
+    ".data.port" "9002"
+run_test "  list port via registrar fallback" \
+    "/api/agents" \
+    '[.data.items[] | select(.id == "e6f7a8b9-c0d1-2345-6789-aabbccddeeff") | .port] | .[0]' "9002"
+run_test "  list ip via registrar fallback" \
+    "/api/agents" \
+    '[.data.items[] | select(.id == "e6f7a8b9-c0d1-2345-6789-aabbccddeeff") | .ip] | .[0]' "10.0.1.60"
+run_test "  list port present for healthy agent" \
+    "/api/agents" \
+    '[.data.items[] | select(.id == "d432fbb3-d2f1-4a97-9ef7-75bd81c00000") | .port] | .[0]' "9002"
 run_test "Search agents by IP"          "/api/agents/search?q=10.0.1"
 echo ""
 
@@ -286,8 +304,25 @@ run_test "PCR values"                   "/api/agents/${HEALTHY_ID}/pcr"
 run_test "IMA log"                      "/api/agents/${HEALTHY_ID}/ima-log"
 run_test "Boot log"                     "/api/agents/${PUSH_ID}/boot-log"
 run_test "Certificates"                 "/api/agents/${HEALTHY_ID}/certificates"
-run_test "Raw data"                     "/api/agents/${HEALTHY_ID}/raw"
+run_test "Raw data (combined)"           "/api/agents/${HEALTHY_ID}/raw"
+run_test "  combined has backend key"    "/api/agents/${HEALTHY_ID}/raw" \
+    ".data.backend | has(\"id\")" "true"
+run_test "  combined has verifier key"   "/api/agents/${HEALTHY_ID}/raw" \
+    ".data | has(\"verifier\")" "true"
+run_test "  combined has registrar key"  "/api/agents/${HEALTHY_ID}/raw" \
+    ".data | has(\"registrar\")" "true"
 run_test "Raw data (push failed)"       "/api/agents/${PUSH_FAILED_ID}/raw"
+run_test "Raw backend"                  "/api/agents/${HEALTHY_ID}/raw/backend"
+run_test "  backend ip"                 "/api/agents/${HEALTHY_ID}/raw/backend" \
+    ".data.ip" "10.0.1.10"
+run_test "Raw registrar"                "/api/agents/${HEALTHY_ID}/raw/registrar"
+run_test "  registrar ek_tpm present"   "/api/agents/${HEALTHY_ID}/raw/registrar" \
+    "(.data.ek_tpm | length) > 0" "true"
+run_test "Raw verifier"                 "/api/agents/${HEALTHY_ID}/raw/verifier"
+run_test "  verifier hash_alg"          "/api/agents/${HEALTHY_ID}/raw/verifier" \
+    ".data.hash_alg" "sha256"
+run_test "Raw backend null-ip fallback" "/api/agents/${NULLIP_ID}/raw/backend" \
+    ".data.ip" "10.0.1.60"
 echo ""
 
 # -- KPI endpoint --

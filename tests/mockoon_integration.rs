@@ -472,6 +472,16 @@ async fn test_mockoon_verifier_push_null_ip_agent() {
         agent.port, None,
         "verifier should return null port for this push agent"
     );
+    assert_eq!(
+        agent.verifier_ip,
+        Some("127.0.0.1".to_string()),
+        "verifier_ip should be populated for push agents"
+    );
+    assert_eq!(
+        agent.verifier_port,
+        Some(8881),
+        "verifier_port should be populated for push agents"
+    );
     assert_eq!(agent.accept_attestations, Some(true));
     assert_eq!(agent.attestation_count, Some(5));
 }
@@ -526,14 +536,28 @@ async fn test_mockoon_resolve_ip_falls_back_to_registrar() {
     let r_body: VerifierResponse<HashMap<String, RegistrarAgent>> = r_resp.json().await.unwrap();
     let registrar_agent = r_body.results.get(agent_id).unwrap();
 
+    // Registrar has the real agent ip/port; verifier_ip/verifier_port are
+    // the verifier server's own address and must NOT be used.
     assert_eq!(
         verifier_agent.resolve_ip(Some(registrar_agent)),
         "10.0.1.60",
-        "resolve_ip should fall back to registrar IP when verifier IP is null"
+        "resolve_ip should fall back to registrar ip"
     );
     assert_eq!(
         verifier_agent.resolve_port(Some(registrar_agent)),
         9002,
-        "resolve_port should fall back to registrar port when verifier port is null"
+        "resolve_port should fall back to registrar port"
+    );
+
+    // Without registrar, no ip/port available (verifier_ip/verifier_port are ignored)
+    assert_eq!(
+        verifier_agent.resolve_ip(None),
+        "",
+        "resolve_ip(None) should return empty when no registrar"
+    );
+    assert_eq!(
+        verifier_agent.resolve_port(None),
+        0,
+        "resolve_port(None) should return 0 when no registrar"
     );
 }

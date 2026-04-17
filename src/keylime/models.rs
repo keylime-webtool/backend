@@ -105,17 +105,22 @@ impl VerifierAgent {
         self.ip.is_none() && self.port.is_none() && self.attestation_count.is_some()
     }
 
-    /// Resolve the agent's IP with fallback: `ip` → `verifier_ip` → registrar ip → `""`.
+    /// Resolve the agent's IP with fallback: `ip` → registrar ip → `""`.
+    ///
+    /// `verifier_ip` is the verifier's own address, not the agent's, so it is
+    /// intentionally excluded from this chain.
     pub fn resolve_ip(&self, registrar: Option<&RegistrarAgent>) -> String {
         self.ip
             .clone()
             .filter(|s| !s.is_empty())
-            .or_else(|| self.verifier_ip.clone().filter(|s| !s.is_empty()))
             .or_else(|| registrar.and_then(|r| r.ip.clone().filter(|s| !s.is_empty())))
             .unwrap_or_default()
     }
 
     /// Resolve the agent's port with fallback: `port` → registrar port → `0`.
+    ///
+    /// `verifier_port` is the verifier's own port, not the agent's, so it is
+    /// intentionally excluded from this chain.
     pub fn resolve_port(&self, registrar: Option<&RegistrarAgent>) -> u16 {
         self.port
             .filter(|&p| p != 0)
@@ -276,23 +281,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_ip_prefers_verifier_ip() {
+    fn resolve_ip_prefers_verifier_ip_field() {
         let agent = VerifierAgent {
             ip: Some("10.0.0.1".into()),
-            verifier_ip: Some("10.0.0.2".into()),
             ..default_verifier()
         };
         let reg = registrar_with(Some("10.0.0.3"), None);
         assert_eq!(agent.resolve_ip(Some(&reg)), "10.0.0.1");
-    }
-
-    #[test]
-    fn resolve_ip_falls_back_to_verifier_ip() {
-        let agent = VerifierAgent {
-            verifier_ip: Some("10.0.0.2".into()),
-            ..default_verifier()
-        };
-        assert_eq!(agent.resolve_ip(None), "10.0.0.2");
     }
 
     #[test]
@@ -312,11 +307,24 @@ mod tests {
     fn resolve_ip_skips_empty_strings() {
         let agent = VerifierAgent {
             ip: Some("".into()),
-            verifier_ip: Some("".into()),
             ..default_verifier()
         };
         let reg = registrar_with(Some("10.0.0.5"), None);
         assert_eq!(agent.resolve_ip(Some(&reg)), "10.0.0.5");
+    }
+
+    #[test]
+    fn resolve_ip_ignores_verifier_ip_field() {
+        let agent = VerifierAgent {
+            verifier_ip: Some("10.0.0.99".into()),
+            ..default_verifier()
+        };
+        let reg = registrar_with(Some("10.0.0.5"), None);
+        assert_eq!(
+            agent.resolve_ip(Some(&reg)),
+            "10.0.0.5",
+            "verifier_ip is the verifier's address, not the agent's"
+        );
     }
 
     #[test]
@@ -344,6 +352,20 @@ mod tests {
         };
         let reg = registrar_with(None, Some(9003));
         assert_eq!(agent.resolve_port(Some(&reg)), 9003);
+    }
+
+    #[test]
+    fn resolve_port_ignores_verifier_port() {
+        let agent = VerifierAgent {
+            verifier_port: Some(8881),
+            ..default_verifier()
+        };
+        let reg = registrar_with(None, Some(9003));
+        assert_eq!(
+            agent.resolve_port(Some(&reg)),
+            9003,
+            "verifier_port is the verifier's own port, not the agent's"
+        );
     }
 
     #[test]

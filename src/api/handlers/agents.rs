@@ -64,8 +64,15 @@ pub async fn list_agents(
             }
         };
 
-        let ip = agent.resolve_ip(None);
-        let port = agent.resolve_port(None);
+        let needs_registrar =
+            agent.ip.as_deref().unwrap_or("").is_empty() || agent.port.unwrap_or(0) == 0;
+        let registrar_agent = if needs_registrar {
+            state.keylime().get_registrar_agent(id_str).await.ok()
+        } else {
+            None
+        };
+        let ip = agent.resolve_ip(registrar_agent.as_ref());
+        let port = agent.resolve_port(registrar_agent.as_ref());
         let (last_attestation, failure_count) = if is_push {
             let last = agent
                 .last_successful_attestation
@@ -237,8 +244,15 @@ pub async fn search_agents(
                 }
             };
 
-            let ip = agent.resolve_ip(None);
-            let port = agent.resolve_port(None);
+            let needs_registrar =
+                agent.ip.as_deref().unwrap_or("").is_empty() || agent.port.unwrap_or(0) == 0;
+            let registrar_agent = if needs_registrar {
+                state.keylime().get_registrar_agent(id_str).await.ok()
+            } else {
+                None
+            };
+            let ip = agent.resolve_ip(registrar_agent.as_ref());
+            let port = agent.resolve_port(registrar_agent.as_ref());
             let (last_attestation, failure_count) = if is_push {
                 let last = agent
                     .last_successful_attestation
