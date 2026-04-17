@@ -194,6 +194,115 @@ run_post_test() {
     fi
 }
 
+# Run a POST test with JSON body.
+run_json_post_test() {
+    local name="$1"
+    local url="$2"
+    local body="$3"
+    local filter="${4:-.success}"
+    local expected="${5:-true}"
+
+    TOTAL=$((TOTAL + 1))
+    printf "  %-55s " "${name}"
+
+    local response
+    response=$(curl -sf -X POST -H "Content-Type: application/json" \
+        -d "$body" "${BACKEND_URL}${url}" 2>&1) || {
+        red "FAIL (HTTP error)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    local actual
+    actual=$(echo "$response" | jq -r "$filter" 2>/dev/null) || {
+        red "FAIL (invalid JSON)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    if [ "$actual" = "$expected" ]; then
+        green "PASS"
+        PASSED=$((PASSED + 1))
+    else
+        red "FAIL (expected '${expected}', got '${actual}')"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# Run a PUT test with JSON body.
+run_put_test() {
+    local name="$1"
+    local url="$2"
+    local body="$3"
+    local filter="${4:-.success}"
+    local expected="${5:-true}"
+
+    TOTAL=$((TOTAL + 1))
+    printf "  %-55s " "${name}"
+
+    local response
+    response=$(curl -sf -X PUT -H "Content-Type: application/json" \
+        -d "$body" "${BACKEND_URL}${url}" 2>&1) || {
+        red "FAIL (HTTP error)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    local actual
+    actual=$(echo "$response" | jq -r "$filter" 2>/dev/null) || {
+        red "FAIL (invalid JSON)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    if [ "$actual" = "$expected" ]; then
+        green "PASS"
+        PASSED=$((PASSED + 1))
+    else
+        red "FAIL (expected '${expected}', got '${actual}')"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# Run a test for a stub/not-implemented endpoint.
+# Expects the endpoint to return JSON with .success == false.
+#   $1 = test name
+#   $2 = HTTP method (GET, POST, PUT, DELETE)
+#   $3 = URL path
+#   $4 = optional JSON body
+run_stub_test() {
+    local name="$1"
+    local method="$2"
+    local url="$3"
+    local body="${4:-}"
+
+    TOTAL=$((TOTAL + 1))
+    printf "  %-55s " "${name} (stub)"
+
+    local curl_args=(-s -X "$method")
+    if [ -n "$body" ]; then
+        curl_args+=(-H "Content-Type: application/json" -d "$body")
+    fi
+
+    local response
+    response=$(curl "${curl_args[@]}" "${BACKEND_URL}${url}" 2>&1)
+
+    local success
+    success=$(echo "$response" | jq -r ".success" 2>/dev/null) || {
+        red "FAIL (invalid JSON)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    if [ "$success" = "false" ]; then
+        green "PASS"
+        PASSED=$((PASSED + 1))
+    else
+        red "FAIL (expected stub, got success=${success})"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 # ── main ─────────────────────────────────────────────────────────────────
 
 MOCKOON_VERIFIER_PID=""
@@ -353,6 +462,7 @@ echo "  Attestations"
 echo "  ------------"
 run_test "Agent state distribution"     "/api/attestations/state-machine"
 run_test "Attestation summary"          "/api/attestations/summary"
+run_test "Attestation timeline"         "/api/attestations/timeline"
 run_test "Attestation history"          "/api/attestations"
 run_test "Failure categorization"       "/api/attestations/failures"
 run_test "Verification pipeline (healthy)" \
@@ -394,6 +504,113 @@ echo "  Compliance"
 echo "  ----------"
 run_test "List frameworks"              "/api/compliance/frameworks"
 run_test "Compliance report (NIST)"     "/api/compliance/reports/nist-sp-800-155"
+echo ""
+
+# -- Agent actions --
+echo "  Agent Actions"
+echo "  -------------"
+run_post_test "Reactivate agent"            "/api/agents/${HEALTHY_ID}/actions/reactivate"
+run_post_test "Stop agent"                  "/api/agents/${PUSH_ID}/actions/stop"
+run_json_post_test "Bulk action (reactivate)" \
+    "/api/agents/bulk" \
+    "{\"agent_ids\":[\"${FAILED_ID}\"],\"action\":\"reactivate\"}" \
+    ".data.action" "reactivate"
+echo ""
+
+# -- Alert endpoints --
+echo "  Alerts"
+echo "  ------"
+ALERT_NEW="a0000001-0000-4000-8000-000000000001"
+ALERT_ACKED="a0000001-0000-4000-8000-000000000002"
+ALERT_CERT="a0000001-0000-4000-8000-000000000003"
+ALERT_INVESTIGATING="a0000001-0000-4000-8000-000000000005"
+run_test "List alerts"                      "/api/alerts"
+run_test "  filter by severity"             "/api/alerts?severity=critical"
+run_test "Alert summary"                    "/api/alerts/summary"
+run_test "Get alert by ID"                  "/api/alerts/${ALERT_NEW}"
+run_post_test "Acknowledge alert"           "/api/alerts/${ALERT_NEW}/acknowledge"
+run_json_post_test "Investigate alert" \
+    "/api/alerts/${ALERT_CERT}/investigate" '{}'
+run_json_post_test "Resolve alert" \
+    "/api/alerts/${ALERT_INVESTIGATING}/resolve" '{}'
+run_post_test "Dismiss alert"               "/api/alerts/${ALERT_ACKED}/dismiss"
+run_post_test "Escalate alert"              "/api/alerts/${ALERT_NEW}/escalate"
+run_stub_test "Alert notifications"  "GET"  "/api/alerts/notifications"
+run_stub_test "Update thresholds"    "PUT"  "/api/alerts/thresholds" \
+    '{"attestation_success_rate":0.95}'
+echo ""
+
+# -- Audit log endpoints (stubs) --
+echo "  Audit Log"
+echo "  ---------"
+run_stub_test "List audit events"    "GET"  "/api/audit-log"
+run_stub_test "Verify audit chain"   "GET"  "/api/audit-log/verify"
+run_stub_test "Export audit log"     "GET"  "/api/audit-log/export"
+echo ""
+
+# -- Settings endpoints --
+echo "  Settings"
+echo "  --------"
+run_test "Get Keylime settings"             "/api/settings/keylime"
+run_test "  verifier_url present"           "/api/settings/keylime" \
+    "(.data.verifier_url | length) > 0" "true"
+run_put_test "Update Keylime settings" \
+    "/api/settings/keylime" \
+    '{"verifier_url":"http://localhost:3000","registrar_url":"http://localhost:3001"}'
+run_test "Get certificate settings"         "/api/settings/certificates"
+run_put_test "Update certificate settings" \
+    "/api/settings/certificates" '{}'
+echo ""
+
+# -- Certificate details --
+echo "  Certificate Details"
+echo "  -------------------"
+CERT_ID=$(curl -sf "${BACKEND_URL}/api/certificates" 2>/dev/null | jq -r '.data[0].id' 2>/dev/null)
+if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ]; then
+    run_test "Get certificate by ID"             "/api/certificates/${CERT_ID}"
+    run_stub_test "Renew certificate"     "POST" "/api/certificates/${CERT_ID}/renew"
+else
+    echo "  (skipped -- no certificate IDs available)"
+fi
+echo ""
+
+# -- Attestation incidents (stubs) --
+echo "  Attestation Incidents"
+echo "  ---------------------"
+INCIDENT_ID="00000000-0000-4000-8000-000000000001"
+run_stub_test "List incidents"        "GET"  "/api/attestations/incidents"
+run_stub_test "Get incident"          "GET"  "/api/attestations/incidents/${INCIDENT_ID}"
+run_stub_test "Rollback incident"     "POST" "/api/attestations/incidents/${INCIDENT_ID}/rollback"
+echo ""
+
+# -- Policy management (stubs) --
+echo "  Policy Management"
+echo "  -----------------"
+run_stub_test "Create policy"         "POST" "/api/policies" \
+    '{"name":"test-policy","kind":"ima","content":"..."}'
+run_stub_test "Update policy"         "PUT"  "/api/policies/production-v1" \
+    '{"content":"..."}'
+run_stub_test "Delete policy"         "DELETE" "/api/policies/production-v1"
+run_stub_test "List policy versions"  "GET"  "/api/policies/production-v1/versions"
+run_stub_test "Diff policy versions"  "GET"  "/api/policies/production-v1/diff"
+run_stub_test "Rollback policy"       "POST" "/api/policies/production-v1/rollback/1"
+run_stub_test "Approve policy change" "POST" "/api/policies/changes/change-001/approve"
+echo ""
+
+# -- Compliance export (stub) --
+echo "  Compliance Export"
+echo "  -----------------"
+run_stub_test "Export report"         "POST" "/api/compliance/reports/nist-sp-800-155/export?format=pdf"
+echo ""
+
+# -- Auth endpoints (stubs) --
+echo "  Authentication"
+echo "  --------------"
+run_stub_test "Login"                 "POST" "/api/auth/login"
+run_stub_test "Auth callback"         "POST" "/api/auth/callback" \
+    '{"code":"test","state":"test"}'
+run_stub_test "Refresh token"         "POST" "/api/auth/refresh"
+run_stub_test "Logout"                "POST" "/api/auth/logout"
 echo ""
 
 # 4. Summary
