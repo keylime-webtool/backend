@@ -304,6 +304,21 @@ impl KeylimeClient {
     // Registrar API methods
     // -----------------------------------------------------------------------
 
+    /// Probe the Registrar API directly — connectivity check only.
+    /// Issues a lightweight GET and checks the status code without parsing
+    /// the body. Does not interact with the circuit breaker (Registrar has
+    /// no breaker of its own).
+    pub async fn probe_registrar(&self) -> AppResult<()> {
+        let url = format!("{}/v2/agents/", self.registrar_url);
+        let resp = self.http.get(&url).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            let status = resp.status().as_u16();
+            Err(AppError::NotFound(format!("Registrar returned {status}")))
+        }
+    }
+
     /// GET /v2/agents/ -- list registered agent IDs from the Registrar.
     pub async fn list_registrar_agents(&self) -> AppResult<Vec<String>> {
         let url = format!("{}/v2/agents/", self.registrar_url);

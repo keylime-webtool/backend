@@ -33,7 +33,7 @@ pub async fn connectivity_status(
 
     // Check Registrar connectivity
     let registrar_start = Instant::now();
-    let registrar_status = match state.keylime().list_registrar_agents().await {
+    let registrar_status = match state.keylime().probe_registrar().await {
         Ok(_) => ServiceStatus::Up,
         Err(_) => ServiceStatus::Down,
     };
