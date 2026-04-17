@@ -170,10 +170,18 @@ pub async fn get_summary(
 /// Derive attestation event counts from a single agent's current state.
 fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> AgentAttestation {
     if agent.is_push_mode() {
-        // Push-mode agent: use attestation_count and consecutive_attestation_failures
+        // Push-mode agent: use attestation_count and consecutive_attestation_failures,
+        // falling back to the agent state when no failure count is reported.
         let total_count = agent.attestation_count.unwrap_or(0);
         let consecutive_failures = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
-        let failed = consecutive_failures;
+        let state = AgentState::from_push_agent(agent);
+        let failed = if consecutive_failures > 0 {
+            consecutive_failures
+        } else if state.is_failed() {
+            1
+        } else {
+            0
+        };
         let successful = total_count.saturating_sub(failed);
         // Estimate ~45ms per attestation for push agents
         let samples = if total_count > 0 { vec![45; 1] } else { vec![] };
