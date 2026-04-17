@@ -410,12 +410,12 @@ pub async fn get_pipeline(
         },
         PipelineResult {
             stage: PipelineStage::VerifyMeasuredBoot,
-            status: if agent.mb_policy.is_some() && !is_failed {
+            status: if agent.effective_mb_policy().is_some() && !is_failed {
                 StageStatus::Pass
             } else {
                 StageStatus::NotReached
             },
-            duration_ms: if agent.mb_policy.is_some() && !is_failed {
+            duration_ms: if agent.effective_mb_policy().is_some() && !is_failed {
                 Some(10)
             } else {
                 None

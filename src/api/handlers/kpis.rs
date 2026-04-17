@@ -32,7 +32,7 @@ pub async fn get_kpis(State(state): State<AppState>) -> AppResult<Json<ApiRespon
                 } else {
                     active += 1;
                 }
-                if agent.ima_policy.is_some() {
+                if agent.effective_ima_policy().is_some() {
                     policy_count += 1;
                 }
             }

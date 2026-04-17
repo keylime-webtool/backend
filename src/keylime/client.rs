@@ -198,6 +198,16 @@ impl KeylimeClient {
         extract_agent::<VerifierAgent>(resp.results, agent_id, |a, id| a.agent_id = id)
     }
 
+    /// GET /v2/agents/{agent_id} -- raw JSON from the Verifier (no struct mapping).
+    pub async fn get_verifier_agent_raw(&self, agent_id: &str) -> AppResult<serde_json::Value> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/agents/{}", self.verifier_url, agent_id);
+        let resp = self
+            .get_json::<VerifierResponse<serde_json::Value>>(&url)
+            .await?;
+        Ok(resp.results)
+    }
+
     /// GET /v2/allowlists/ -- list policy names from the Verifier.
     pub async fn list_policies(&self) -> AppResult<Vec<String>> {
         self.check_circuit().await?;
@@ -206,6 +216,19 @@ impl KeylimeClient {
             .get_json::<VerifierResponse<PolicyListResults>>(&url)
             .await?;
         Ok(resp.results.policy_names)
+    }
+
+    /// GET /v2/mbpolicies/ -- list measured boot policy names from the Verifier.
+    pub async fn list_mb_policies(&self) -> AppResult<Vec<String>> {
+        self.check_circuit().await?;
+        let url = format!("{}/v2/mbpolicies/", self.verifier_url);
+        let resp = self
+            .get_json::<VerifierResponse<MbPolicyListResults>>(&url)
+            .await;
+        match resp {
+            Ok(r) => Ok(r.results.policy_names),
+            Err(_) => Ok(Vec::new()),
+        }
     }
 
     /// GET /v2/allowlists/{name} -- policy detail from the Verifier.
@@ -389,6 +412,13 @@ impl KeylimeClient {
 #[derive(Debug, serde::Deserialize)]
 struct PolicyListResults {
     #[serde(default, alias = "runtimepolicy names")]
+    policy_names: Vec<String>,
+}
+
+/// MB policy list results from Verifier `GET /v2/mbpolicies/`.
+#[derive(Debug, serde::Deserialize)]
+struct MbPolicyListResults {
+    #[serde(default, alias = "mbpolicy names")]
     policy_names: Vec<String>,
 }
 

@@ -30,6 +30,7 @@ pub async fn list_agents(
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AgentSummary>>>> {
     // Fetch agent UUIDs from Verifier
     let agent_ids = state.keylime().list_verifier_agents().await?;
+    let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;
 
     // Fetch detail for each agent to build summaries.
     // Skip agents that fail to fetch rather than failing the entire list.
@@ -42,6 +43,26 @@ pub async fn list_agents(
                 continue;
             }
         };
+        // Apply policy filter early on raw Keylime data — same matching
+        // logic the policy handler uses for assigned_agents counts.
+        if let Some(ref policy_filter) = params.policy {
+            let is_mb = mb_policies.contains(policy_filter);
+            let matches = if is_mb {
+                agent
+                    .effective_mb_policy()
+                    .map(|p| p == policy_filter.as_str())
+                    .unwrap_or_else(|| agent.has_mb_refstate == Some(1))
+            } else {
+                agent
+                    .effective_ima_policy()
+                    .map(|p| p == policy_filter.as_str())
+                    .unwrap_or_else(|| agent.has_runtime_policy == Some(1))
+            };
+            if !matches {
+                continue;
+            }
+        }
+
         let is_push = agent.is_push_mode();
 
         let (mode, agent_state) = if is_push {
@@ -91,6 +112,9 @@ pub async fn list_agents(
             (None, if agent_state.is_failed() { 1 } else { 0 })
         };
 
+        let (assigned_policy, mb_policy_resolved) =
+            resolve_agent_policies(&agent, &ima_policies, &mb_policies);
+
         summaries.push(AgentSummary {
             id: uuid,
             ip,
@@ -98,8 +122,8 @@ pub async fn list_agents(
             state: agent_state,
             attestation_mode: mode,
             last_attestation,
-            assigned_policy: agent.ima_policy.clone(),
-            mb_policy: agent.mb_policy.clone(),
+            assigned_policy,
+            mb_policy: mb_policy_resolved,
             failure_count,
         });
     }
@@ -165,6 +189,11 @@ pub async fn get_agent(
         (AttestationMode::Pull, pull_state)
     };
 
+    // Resolve policy names (Keylime v2 fallback)
+    let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;
+    let (resolved_ima, resolved_mb) =
+        resolve_agent_policies(&verifier_agent, &ima_policies, &mb_policies);
+
     // Build a combined JSON response with data from both sources
     let mut combined = serde_json::json!({
         "id": id_str,
@@ -176,8 +205,8 @@ pub async fn get_agent(
         "enc_alg": verifier_agent.enc_alg,
         "sign_alg": verifier_agent.sign_alg,
         "ima_pcrs": verifier_agent.ima_pcrs,
-        "ima_policy": verifier_agent.ima_policy,
-        "mb_policy": verifier_agent.mb_policy,
+        "ima_policy": resolved_ima,
+        "mb_policy": resolved_mb,
         "tpm_policy": verifier_agent.tpm_policy,
         "accept_tpm_hash_algs": verifier_agent.accept_tpm_hash_algs,
         "accept_tpm_encryption_algs": verifier_agent.accept_tpm_encryption_algs,
@@ -208,6 +237,7 @@ pub async fn search_agents(
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
     let q = params.q.to_lowercase();
     let agent_ids = state.keylime().list_verifier_agents().await?;
+    let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;
 
     let mut results = Vec::new();
     for id_str in &agent_ids {
@@ -278,6 +308,9 @@ pub async fn search_agents(
                 (None, if agent_state.is_failed() { 1 } else { 0 })
             };
 
+            let (assigned_policy, mb_policy_resolved) =
+                resolve_agent_policies(&agent, &ima_policies, &mb_policies);
+
             results.push(AgentSummary {
                 id: uuid,
                 ip,
@@ -285,8 +318,8 @@ pub async fn search_agents(
                 state: agent_state,
                 attestation_mode: mode,
                 last_attestation,
-                assigned_policy: agent.ima_policy.clone(),
-                mb_policy: agent.mb_policy.clone(),
+                assigned_policy,
+                mb_policy: mb_policy_resolved,
                 failure_count,
             });
         }
@@ -522,10 +555,59 @@ pub async fn get_raw_verifier(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let id_str = id.to_string();
-    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
-    let value =
-        serde_json::to_value(verifier_agent).map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(Json(ApiResponse::ok(value)))
+    let raw = state.keylime().get_verifier_agent_raw(&id_str).await?;
+    // Unwrap nested format: { "uuid": { ...data } } → { ...data }
+    let agent_data = match raw.as_object() {
+        Some(obj) if obj.len() == 1 => {
+            let (_, val) = obj.iter().next().unwrap();
+            if val.is_object() {
+                val.clone()
+            } else {
+                raw
+            }
+        }
+        _ => raw,
+    };
+    Ok(Json(ApiResponse::ok(agent_data)))
+}
+
+/// Fetch policy names from Keylime, split by source endpoint:
+/// IMA from GET /v2/allowlists/, MB from GET /v2/mbpolicies/.
+async fn fetch_policy_names_by_kind(state: &AppState) -> (Vec<String>, Vec<String>) {
+    let ima = state.keylime().list_policies().await.unwrap_or_default();
+    let mb = state.keylime().list_mb_policies().await.unwrap_or_default();
+    (ima, mb)
+}
+
+/// Resolve policy names for an agent using Keylime flags as a fallback.
+///
+/// When the agent record includes explicit policy names (ima_policy /
+/// mb_policy), those are returned directly.  When only boolean flags are
+/// available (has_runtime_policy / has_mb_refstate — typical of real
+/// Keylime v2), the first known policy of that kind is used.  This is the
+/// same approximation as the policy handler's assigned_agents count.
+fn resolve_agent_policies(
+    agent: &crate::keylime::models::VerifierAgent,
+    ima_policies: &[String],
+    mb_policies: &[String],
+) -> (Option<String>, Option<String>) {
+    let assigned_policy = agent.effective_ima_policy().map(String::from).or_else(|| {
+        if agent.has_runtime_policy == Some(1) && ima_policies.len() == 1 {
+            ima_policies.first().cloned()
+        } else {
+            None
+        }
+    });
+
+    let mb_policy = agent.effective_mb_policy().map(String::from).or_else(|| {
+        if agent.has_mb_refstate == Some(1) && mb_policies.len() == 1 {
+            mb_policies.first().cloned()
+        } else {
+            None
+        }
+    });
+
+    (assigned_policy, mb_policy)
 }
 
 /// Build the merged agent summary that the dashboard backend computes.
@@ -558,8 +640,8 @@ fn build_backend_summary(
         "enc_alg": verifier_agent.enc_alg,
         "sign_alg": verifier_agent.sign_alg,
         "ima_pcrs": verifier_agent.ima_pcrs,
-        "ima_policy": verifier_agent.ima_policy,
-        "mb_policy": verifier_agent.mb_policy,
+        "ima_policy": verifier_agent.effective_ima_policy(),
+        "mb_policy": verifier_agent.effective_mb_policy(),
         "tpm_policy": verifier_agent.tpm_policy,
         "accept_tpm_hash_algs": verifier_agent.accept_tpm_hash_algs,
         "accept_tpm_encryption_algs": verifier_agent.accept_tpm_encryption_algs,

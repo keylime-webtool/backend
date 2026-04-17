@@ -248,15 +248,18 @@ The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment
 
 ### Mock fleet
 
-The mock data defines a fleet of 5 agents in different states:
+The mock data defines a fleet of 6 agents in different states:
 
 | Agent UUID | Mode | State | Description |
 |-----------|------|-------|-------------|
 | `d432fbb3-d2f1-4a97-9ef7-75bd81c00000` | Pull | GET_QUOTE | Healthy agent, IMA policy `production-v1` |
-| `a1b2c3d4-0000-1111-2222-333344445555` | Pull | FAILED | Failed agent, regcount=3 |
-| `f7e6d5c4-b3a2-9180-7654-321098765432` | Push | PASS | Healthy push-mode agent, measured boot + IMA policies, attestation_count=42 |
-| `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, attestation timeout + 3 consecutive failures |
+| `a1b2c3d4-0000-1111-2222-333344445555` | Pull | FAILED | Failed agent, IMA policy `production-v1`, regcount=3 |
+| `f7e6d5c4-b3a2-9180-7654-321098765432` | Push | PASS | Healthy push-mode agent, IMA `staging-v2` + MB `measured-boot-v1`, attestation_count=42 |
+| `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, IMA `production-v1`, attestation timeout + 3 consecutive failures |
 | `c5d6e7f8-a9b0-4321-8765-abcdef012345` | Push | PASS | Healthy push-mode agent, IMA policy `production-v1`, attestation_count=78 |
+| `e6f7a8b9-c0d1-2345-6789-aabbccddeeff` | Push | PASS | Null ip/port push agent (registrar fallback), IMA `production-v1`, attestation_count=5 |
+
+Policies are served from two Keylime API endpoints: IMA policies from `GET /v2/allowlists/` (`production-v1`, `staging-v2`) and measured boot policies from `GET /v2/mbpolicies/` (`measured-boot-v1`).
 
 Since there is no attestation history table yet, the `/api/attestations/summary` endpoint derives event-level stats from agent states: push-mode agents contribute their `attestation_count` and `consecutive_attestation_failures`, while pull-mode agents count as a single event each. The `/api/attestations/timeline` endpoint distributes these totals across hourly buckets with deterministic variation so the chart looks natural.
 

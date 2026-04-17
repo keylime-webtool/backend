@@ -9,6 +9,40 @@ pub enum PolicyKind {
     MeasuredBoot,
 }
 
+impl PolicyKind {
+    /// Infer policy kind from the policy name.
+    ///
+    /// Checks for common measured-boot naming patterns ("boot", "mb-",
+    /// "mb_", "measured"); everything else defaults to IMA.
+    pub fn from_name(name: &str) -> Self {
+        let lower = name.to_lowercase();
+        if lower.contains("boot")
+            || lower.starts_with("mb-")
+            || lower.starts_with("mb_")
+            || lower.contains("measured")
+        {
+            PolicyKind::MeasuredBoot
+        } else {
+            PolicyKind::Ima
+        }
+    }
+
+    /// Classify a policy using agent data when available, falling back
+    /// to the name-based heuristic.
+    pub fn classify(name: &str, agents: &[crate::keylime::models::VerifierAgent]) -> Self {
+        if agents.iter().any(|a| a.effective_mb_policy() == Some(name)) {
+            return PolicyKind::MeasuredBoot;
+        }
+        if agents
+            .iter()
+            .any(|a| a.effective_ima_policy() == Some(name))
+        {
+            return PolicyKind::Ima;
+        }
+        PolicyKind::from_name(name)
+    }
+}
+
 /// An IMA or measured boot policy (FR-033, FR-036).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Policy {
@@ -95,6 +129,43 @@ mod tests {
             let deserialized: ApprovalStatus = serde_json::from_str(&json).unwrap();
             assert_eq!(deserialized, status);
         }
+    }
+
+    #[test]
+    fn from_name_detects_boot_keyword() {
+        assert_eq!(
+            PolicyKind::from_name("boot-policy"),
+            PolicyKind::MeasuredBoot
+        );
+        assert_eq!(
+            PolicyKind::from_name("secure-boot-1"),
+            PolicyKind::MeasuredBoot
+        );
+    }
+
+    #[test]
+    fn from_name_detects_mb_prefix() {
+        assert_eq!(PolicyKind::from_name("mb-5555"), PolicyKind::MeasuredBoot);
+        assert_eq!(
+            PolicyKind::from_name("mb_refstate"),
+            PolicyKind::MeasuredBoot
+        );
+        assert_eq!(PolicyKind::from_name("MB-Policy"), PolicyKind::MeasuredBoot);
+    }
+
+    #[test]
+    fn from_name_detects_measured_keyword() {
+        assert_eq!(
+            PolicyKind::from_name("measured-boot-ref"),
+            PolicyKind::MeasuredBoot
+        );
+    }
+
+    #[test]
+    fn from_name_defaults_to_ima() {
+        assert_eq!(PolicyKind::from_name("ima-5555"), PolicyKind::Ima);
+        assert_eq!(PolicyKind::from_name("my-policy"), PolicyKind::Ima);
+        assert_eq!(PolicyKind::from_name("allowlist-prod"), PolicyKind::Ima);
     }
 
     #[test]

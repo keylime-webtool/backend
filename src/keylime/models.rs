@@ -40,11 +40,21 @@ pub struct VerifierAgent {
     pub has_mb_refstate: Option<i32>,
     #[serde(default)]
     pub has_runtime_policy: Option<i32>,
-    // Legacy fields — present in some Keylime versions
-    #[serde(default, alias = "runtime_policy_name")]
+    // Policy name fields — Keylime versions use different names:
+    //   v6:  allowlist_name
+    //   v7+: runtime_policy_name
+    //   mock/legacy: ima_policy / mb_policy
+    // Any may be present; use effective_ima_policy() / effective_mb_policy().
+    #[serde(default)]
     pub ima_policy: Option<String>,
-    #[serde(default, alias = "mb_policy_name")]
+    #[serde(default)]
+    pub runtime_policy_name: Option<String>,
+    #[serde(default)]
+    pub allowlist_name: Option<String>,
+    #[serde(default)]
     pub mb_policy: Option<String>,
+    #[serde(default)]
+    pub mb_policy_name: Option<String>,
     #[serde(default)]
     pub hash_alg: String,
     #[serde(default)]
@@ -89,6 +99,30 @@ pub struct VerifierAgent {
 }
 
 impl VerifierAgent {
+    /// Return the IMA policy name, checking all known field names across
+    /// Keylime versions: `ima_policy`, `runtime_policy_name` (v7+),
+    /// `allowlist_name` (v6).  Empty strings are ignored.
+    pub fn effective_ima_policy(&self) -> Option<&str> {
+        self.ima_policy
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .or_else(|| {
+                self.runtime_policy_name
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+            })
+            .or_else(|| self.allowlist_name.as_deref().filter(|p| !p.is_empty()))
+    }
+
+    /// Return the MB policy name, checking both old (`mb_policy`) and
+    /// new (`mb_policy_name`) field names.  Empty strings are ignored.
+    pub fn effective_mb_policy(&self) -> Option<&str> {
+        self.mb_policy
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .or_else(|| self.mb_policy_name.as_deref().filter(|p| !p.is_empty()))
+    }
+
     /// Detect whether this agent is running in push mode.
     ///
     /// Handles multiple Keylime versions:
@@ -372,5 +406,63 @@ mod tests {
     fn resolve_port_returns_zero_when_all_none() {
         let agent = default_verifier();
         assert_eq!(agent.resolve_port(None), 0);
+    }
+
+    #[test]
+    fn effective_ima_prefers_ima_policy_field() {
+        let agent = VerifierAgent {
+            ima_policy: Some("policy-a".into()),
+            runtime_policy_name: Some("policy-b".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_ima_policy(), Some("policy-a"));
+    }
+
+    #[test]
+    fn effective_ima_falls_back_to_runtime_policy_name() {
+        let agent = VerifierAgent {
+            runtime_policy_name: Some("policy-b".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_ima_policy(), Some("policy-b"));
+    }
+
+    #[test]
+    fn effective_ima_skips_empty_ima_policy() {
+        let agent = VerifierAgent {
+            ima_policy: Some("".into()),
+            runtime_policy_name: Some("policy-b".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_ima_policy(), Some("policy-b"));
+    }
+
+    #[test]
+    fn effective_ima_none_when_both_empty() {
+        let agent = VerifierAgent {
+            ima_policy: Some("".into()),
+            runtime_policy_name: Some("".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_ima_policy(), None);
+    }
+
+    #[test]
+    fn effective_mb_prefers_mb_policy_field() {
+        let agent = VerifierAgent {
+            mb_policy: Some("boot-a".into()),
+            mb_policy_name: Some("boot-b".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_mb_policy(), Some("boot-a"));
+    }
+
+    #[test]
+    fn effective_mb_falls_back_to_mb_policy_name() {
+        let agent = VerifierAgent {
+            mb_policy_name: Some("boot-b".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.effective_mb_policy(), Some("boot-b"));
     }
 }

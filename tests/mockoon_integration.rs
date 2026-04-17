@@ -245,9 +245,21 @@ async fn test_mockoon_verifier_list_policies() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     let names = body["results"]["runtimepolicy names"].as_array().unwrap();
-    assert_eq!(names.len(), 3);
+    assert_eq!(names.len(), 2);
     assert!(names.iter().any(|n| n == "production-v1"));
     assert!(names.iter().any(|n| n == "staging-v2"));
+
+    // MB policies are served from a separate endpoint
+    let resp = client
+        .get(format!("{VERIFIER_BASE}/v2/mbpolicies/"))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock mbpolicies");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let mb_names = body["results"]["mbpolicy names"].as_array().unwrap();
+    assert_eq!(mb_names.len(), 1);
+    assert!(mb_names.iter().any(|n| n == "measured-boot-v1"));
 }
 
 #[tokio::test]
