@@ -455,7 +455,7 @@ pub async fn get_agent_certs(
     Ok(Json(ApiResponse::ok(certs)))
 }
 
-/// GET /api/agents/:id/raw -- Raw JSON agent record (FR-020).
+/// GET /api/agents/:id/raw -- Combined raw data from all sources (FR-020).
 pub async fn get_raw_data(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -464,10 +464,99 @@ pub async fn get_raw_data(
     let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
     let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
 
+    let backend = build_backend_summary(&state, &id_str, &verifier_agent, &registrar_agent)?;
+
     let raw = serde_json::json!({
+        "backend": backend,
         "verifier": verifier_agent,
         "registrar": registrar_agent,
     });
 
     Ok(Json(ApiResponse::ok(raw)))
+}
+
+/// GET /api/agents/:id/raw/backend -- Backend-computed agent summary (FR-020).
+pub async fn get_raw_backend(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await.ok();
+
+    let backend = build_backend_summary(&state, &id_str, &verifier_agent, &registrar_agent)?;
+    Ok(Json(ApiResponse::ok(backend)))
+}
+
+/// GET /api/agents/:id/raw/registrar -- Raw Registrar API JSON (FR-020).
+pub async fn get_raw_registrar(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let registrar_agent = state.keylime().get_registrar_agent(&id_str).await?;
+    let value =
+        serde_json::to_value(registrar_agent).map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(Json(ApiResponse::ok(value)))
+}
+
+/// GET /api/agents/:id/raw/verifier -- Raw Verifier API JSON (FR-020).
+pub async fn get_raw_verifier(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
+    let id_str = id.to_string();
+    let verifier_agent = state.keylime().get_verifier_agent(&id_str).await?;
+    let value =
+        serde_json::to_value(verifier_agent).map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(Json(ApiResponse::ok(value)))
+}
+
+/// Build the merged agent summary that the dashboard backend computes.
+fn build_backend_summary(
+    _state: &AppState,
+    id_str: &str,
+    verifier_agent: &crate::keylime::models::VerifierAgent,
+    registrar_agent: &Option<crate::keylime::models::RegistrarAgent>,
+) -> AppResult<serde_json::Value> {
+    let is_push = verifier_agent.is_push_mode();
+
+    let (mode, agent_state) = if is_push {
+        (
+            AttestationMode::Push,
+            AgentState::from_push_agent(verifier_agent),
+        )
+    } else {
+        let pull_state = AgentState::from_operational_state(&verifier_agent.operational_state)
+            .map_err(AppError::Internal)?;
+        (AttestationMode::Pull, pull_state)
+    };
+
+    let mut summary = serde_json::json!({
+        "id": id_str,
+        "ip": verifier_agent.ip.clone().unwrap_or_default(),
+        "port": verifier_agent.port.unwrap_or_default(),
+        "state": agent_state,
+        "attestation_mode": mode,
+        "hash_alg": verifier_agent.hash_alg,
+        "enc_alg": verifier_agent.enc_alg,
+        "sign_alg": verifier_agent.sign_alg,
+        "ima_pcrs": verifier_agent.ima_pcrs,
+        "ima_policy": verifier_agent.ima_policy,
+        "mb_policy": verifier_agent.mb_policy,
+        "tpm_policy": verifier_agent.tpm_policy,
+        "accept_tpm_hash_algs": verifier_agent.accept_tpm_hash_algs,
+        "accept_tpm_encryption_algs": verifier_agent.accept_tpm_encryption_algs,
+        "accept_tpm_signing_algs": verifier_agent.accept_tpm_signing_algs,
+    });
+
+    if let Some(reg) = registrar_agent {
+        if let Some(obj) = summary.as_object_mut() {
+            obj.insert("ek_tpm".into(), serde_json::json!(reg.ek_tpm));
+            obj.insert("aik_tpm".into(), serde_json::json!(reg.aik_tpm));
+            obj.insert("regcount".into(), serde_json::json!(reg.regcount));
+        }
+    }
+
+    Ok(summary)
 }

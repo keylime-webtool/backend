@@ -60,6 +60,15 @@ fn agent_routes() -> Router<AppState> {
         .route("/{id}/boot-log", get(handlers::agents::get_boot_log))
         .route("/{id}/certificates", get(handlers::agents::get_agent_certs))
         .route("/{id}/raw", get(handlers::agents::get_raw_data))
+        .route("/{id}/raw/backend", get(handlers::agents::get_raw_backend))
+        .route(
+            "/{id}/raw/registrar",
+            get(handlers::agents::get_raw_registrar),
+        )
+        .route(
+            "/{id}/raw/verifier",
+            get(handlers::agents::get_raw_verifier),
+        )
 }
 
 fn attestation_routes() -> Router<AppState> {

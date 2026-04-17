@@ -124,6 +124,9 @@ curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/ima-l
 curl http://localhost:8080/api/agents/f7e6d5c4-b3a2-9180-7654-321098765432/boot-log | jq
 curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/certificates | jq
 curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw/backend | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw/registrar | jq
+curl http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/raw/verifier | jq
 
 # Attestation analytics (supports ?range=1h|6h|24h|7d|30d)
 curl "http://localhost:8080/api/attestations/summary?range=30d" | jq
