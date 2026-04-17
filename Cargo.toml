@@ -54,6 +54,7 @@ url = "2"
 
 # Configuration
 config = "0.14"
+toml = "0.8"
 
 [package.metadata.cargo-machete]
 # These dependencies are used by scaffolded modules with todo!() stubs.

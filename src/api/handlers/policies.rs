@@ -12,17 +12,17 @@ use crate::state::AppState;
 pub async fn list_policies(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<Vec<Policy>>>> {
-    let policy_names = state.keylime.list_policies().await?;
+    let policy_names = state.keylime().list_policies().await?;
 
     let mut policies = Vec::new();
     for name in &policy_names {
-        let runtime = state.keylime.get_policy(name).await?;
+        let runtime = state.keylime().get_policy(name).await?;
 
         // Count how many agents use this policy
-        let agent_ids = state.keylime.list_verifier_agents().await?;
+        let agent_ids = state.keylime().list_verifier_agents().await?;
         let mut assigned: u64 = 0;
         for id in &agent_ids {
-            if let Ok(agent) = state.keylime.get_verifier_agent(id).await {
+            if let Ok(agent) = state.keylime().get_verifier_agent(id).await {
                 if agent.ima_policy.as_deref() == Some(name)
                     || agent.mb_policy.as_deref() == Some(name)
                 {
@@ -68,7 +68,7 @@ pub async fn get_policy(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<ApiResponse<Policy>>> {
-    let runtime = state.keylime.get_policy(&id).await?;
+    let runtime = state.keylime().get_policy(&id).await?;
 
     let kind = if id.contains("boot") {
         PolicyKind::MeasuredBoot
@@ -156,12 +156,12 @@ pub async fn impact_analysis(
     Path(id): Path<String>,
 ) -> AppResult<Json<ApiResponse<ImpactAnalysis>>> {
     // Count agents using this policy
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut affected: u64 = 0;
     let mut unaffected: u64 = 0;
 
     for aid in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(aid).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(aid).await {
             if agent.ima_policy.as_deref() == Some(&id) || agent.mb_policy.as_deref() == Some(&id) {
                 affected += 1;
             } else {
@@ -197,14 +197,14 @@ pub async fn approve_change(Path(_id): Path<String>) -> AppResult<Json<ApiRespon
 pub async fn assignment_matrix(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
-    let agent_ids = state.keylime.list_verifier_agents().await?;
+    let agent_ids = state.keylime().list_verifier_agents().await?;
     let mut matrix = Vec::new();
 
     for aid in &agent_ids {
-        if let Ok(agent) = state.keylime.get_verifier_agent(aid).await {
+        if let Ok(agent) = state.keylime().get_verifier_agent(aid).await {
             matrix.push(serde_json::json!({
                 "agent_id": agent.agent_id,
-                "ip": agent.ip,
+                "ip": agent.ip.clone().unwrap_or_default(),
                 "ima_policy": agent.ima_policy,
                 "mb_policy": agent.mb_policy,
             }));

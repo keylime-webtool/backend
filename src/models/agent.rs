@@ -57,6 +57,33 @@ impl TryFrom<i32> for AgentState {
     }
 }
 
+impl AgentState {
+    /// Parse from a `serde_json::Value` — handles both integer and string
+    /// representations returned by different Keylime versions.
+    pub fn from_operational_state(val: &serde_json::Value) -> Result<Self, String> {
+        match val {
+            serde_json::Value::Number(n) => {
+                let i = n.as_i64().unwrap_or(-1) as i32;
+                AgentState::try_from(i)
+            }
+            serde_json::Value::String(s) => match s.to_lowercase().as_str() {
+                "registered" => Ok(AgentState::Registered),
+                "start" => Ok(AgentState::Start),
+                "saved" => Ok(AgentState::Saved),
+                "get_quote" | "getquote" | "get quote" => Ok(AgentState::GetQuote),
+                "retry" => Ok(AgentState::Retry),
+                "provide_v" | "providev" | "provide v" => Ok(AgentState::ProvideV),
+                "failed" => Ok(AgentState::Failed),
+                "terminated" => Ok(AgentState::Terminated),
+                "invalid_quote" | "invalidquote" | "invalid quote" => Ok(AgentState::InvalidQuote),
+                "tenant_failed" | "tenantfailed" | "tenant failed" => Ok(AgentState::TenantFailed),
+                _ => Err(format!("unknown operational_state: {s}")),
+            },
+            _ => Err(format!("unexpected type for operational_state: {val}")),
+        }
+    }
+}
+
 /// Attestation mode the agent operates in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AttestationMode {
@@ -111,7 +138,21 @@ impl AgentState {
     }
 
     /// Compute push-mode state from verifier agent fields.
+    ///
+    /// Uses `attestation_status` (from real Keylime) when available,
+    /// falling back to `accept_attestations` / `consecutive_attestation_failures`
+    /// logic (Mockoon / older versions).
     pub fn from_push_agent(agent: &crate::keylime::models::VerifierAgent) -> Self {
+        // Prefer the explicit attestation_status field from the Verifier.
+        if let Some(ref status) = agent.attestation_status {
+            return match status.to_uppercase().as_str() {
+                "PASS" => AgentState::Pass,
+                "FAIL" => AgentState::Fail,
+                _ => AgentState::Pending,
+            };
+        }
+
+        // Fallback: compute from accept_attestations / failure count.
         let accepting = agent.accept_attestations.unwrap_or(true);
         let failures = agent.consecutive_attestation_failures.unwrap_or(0);
         let count = agent.attestation_count.unwrap_or(0);
@@ -131,6 +172,7 @@ impl AgentState {
 pub struct AgentSummary {
     pub id: Uuid,
     pub ip: String,
+    pub port: u16,
     pub state: AgentState,
     pub attestation_mode: AttestationMode,
     pub last_attestation: Option<DateTime<Utc>>,

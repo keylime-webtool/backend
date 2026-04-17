@@ -29,6 +29,7 @@ fn api_routes() -> Router<AppState> {
         .nest("/compliance", compliance_routes())
         .nest("/integrations", integration_routes())
         .nest("/performance", performance_routes())
+        .nest("/settings", settings_routes())
 }
 
 fn auth_routes() -> Router<AppState> {
@@ -59,12 +60,22 @@ fn agent_routes() -> Router<AppState> {
         .route("/{id}/boot-log", get(handlers::agents::get_boot_log))
         .route("/{id}/certificates", get(handlers::agents::get_agent_certs))
         .route("/{id}/raw", get(handlers::agents::get_raw_data))
+        .route("/{id}/raw/backend", get(handlers::agents::get_raw_backend))
+        .route(
+            "/{id}/raw/registrar",
+            get(handlers::agents::get_raw_registrar),
+        )
+        .route(
+            "/{id}/raw/verifier",
+            get(handlers::agents::get_raw_verifier),
+        )
 }
 
 fn attestation_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::attestations::list_attestations))
         .route("/summary", get(handlers::attestations::get_summary))
+        .route("/timeline", get(handlers::attestations::get_timeline))
         .route("/failures", get(handlers::attestations::get_failures))
         .route("/incidents", get(handlers::attestations::list_incidents))
         .route("/incidents/{id}", get(handlers::attestations::get_incident))
@@ -186,4 +197,15 @@ fn performance_routes() -> Router<AppState> {
         )
         .route("/config", get(handlers::performance::config_drift))
         .route("/capacity", get(handlers::performance::capacity_planning))
+}
+
+fn settings_routes() -> Router<AppState> {
+    Router::new()
+        .route("/keylime", get(handlers::settings::get_keylime))
+        .route("/keylime", put(handlers::settings::update_keylime))
+        .route("/certificates", get(handlers::settings::get_certificates))
+        .route(
+            "/certificates",
+            put(handlers::settings::update_certificates),
+        )
 }

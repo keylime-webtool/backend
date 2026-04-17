@@ -7,5 +7,6 @@ pub mod config;
 pub mod error;
 pub mod keylime;
 pub mod models;
+pub mod settings_store;
 pub mod state;
 pub mod storage;
