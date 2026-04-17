@@ -64,24 +64,16 @@ pub async fn list_agents(
             }
         };
 
-        let (ip, last_attestation, failure_count) = if is_push {
-            let ip = agent
-                .ip
-                .clone()
-                .or_else(|| agent.verifier_ip.clone())
-                .unwrap_or_default();
+        let ip = agent.resolve_ip(None);
+        let (last_attestation, failure_count) = if is_push {
             let last = agent
                 .last_successful_attestation
                 .or(agent.last_received_quote)
                 .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
             let failures = agent.consecutive_attestation_failures.unwrap_or(0);
-            (ip, last, failures)
+            (last, failures)
         } else {
-            (
-                agent.ip.clone().unwrap_or_default(),
-                None,
-                if agent_state.is_failed() { 1 } else { 0 },
-            )
+            (None, if agent_state.is_failed() { 1 } else { 0 })
         };
 
         summaries.push(AgentSummary {
@@ -160,8 +152,8 @@ pub async fn get_agent(
     // Build a combined JSON response with data from both sources
     let mut combined = serde_json::json!({
         "id": id_str,
-        "ip": verifier_agent.ip.unwrap_or_default(),
-        "port": verifier_agent.port.unwrap_or_default(),
+        "ip": verifier_agent.resolve_ip(registrar_agent.as_ref()),
+        "port": verifier_agent.resolve_port(registrar_agent.as_ref()),
         "state": agent_state,
         "attestation_mode": mode,
         "hash_alg": verifier_agent.hash_alg,
@@ -243,24 +235,16 @@ pub async fn search_agents(
                 }
             };
 
-            let (ip, last_attestation, failure_count) = if is_push {
-                let ip = agent
-                    .ip
-                    .clone()
-                    .or_else(|| agent.verifier_ip.clone())
-                    .unwrap_or_default();
+            let ip = agent.resolve_ip(None);
+            let (last_attestation, failure_count) = if is_push {
                 let last = agent
                     .last_successful_attestation
                     .or(agent.last_received_quote)
                     .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
                 let failures = agent.consecutive_attestation_failures.unwrap_or(0);
-                (ip, last, failures)
+                (last, failures)
             } else {
-                (
-                    agent.ip.clone().unwrap_or_default(),
-                    None,
-                    if agent_state.is_failed() { 1 } else { 0 },
-                )
+                (None, if agent_state.is_failed() { 1 } else { 0 })
             };
 
             results.push(AgentSummary {
@@ -534,8 +518,8 @@ fn build_backend_summary(
 
     let mut summary = serde_json::json!({
         "id": id_str,
-        "ip": verifier_agent.ip.clone().unwrap_or_default(),
-        "port": verifier_agent.port.unwrap_or_default(),
+        "ip": verifier_agent.resolve_ip(registrar_agent.as_ref()),
+        "port": verifier_agent.resolve_port(registrar_agent.as_ref()),
         "state": agent_state,
         "attestation_mode": mode,
         "hash_alg": verifier_agent.hash_alg,

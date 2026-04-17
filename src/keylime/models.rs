@@ -105,6 +105,24 @@ impl VerifierAgent {
         self.ip.is_none() && self.port.is_none() && self.attestation_count.is_some()
     }
 
+    /// Resolve the agent's IP with fallback: `ip` → `verifier_ip` → registrar ip → `""`.
+    pub fn resolve_ip(&self, registrar: Option<&RegistrarAgent>) -> String {
+        self.ip
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.verifier_ip.clone().filter(|s| !s.is_empty()))
+            .or_else(|| registrar.and_then(|r| r.ip.clone().filter(|s| !s.is_empty())))
+            .unwrap_or_default()
+    }
+
+    /// Resolve the agent's port with fallback: `port` → registrar port → `0`.
+    pub fn resolve_port(&self, registrar: Option<&RegistrarAgent>) -> u16 {
+        self.port
+            .filter(|&p| p != 0)
+            .or_else(|| registrar.and_then(|r| r.port.filter(|&p| p != 0)))
+            .unwrap_or_default()
+    }
+
     /// Parse `operational_state` from the Keylime JSON — handles both
     /// integer values (older versions) and string names (newer versions).
     pub fn parse_state_str(&self) -> String {
@@ -239,4 +257,98 @@ pub struct BootLogEntry {
 pub struct BootLogResults {
     #[serde(default)]
     pub entries: Vec<BootLogEntry>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn default_verifier() -> VerifierAgent {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn registrar_with(ip: Option<&str>, port: Option<u16>) -> RegistrarAgent {
+        RegistrarAgent {
+            ip: ip.map(String::from),
+            port,
+            ..serde_json::from_value(serde_json::json!({})).unwrap()
+        }
+    }
+
+    #[test]
+    fn resolve_ip_prefers_verifier_ip() {
+        let agent = VerifierAgent {
+            ip: Some("10.0.0.1".into()),
+            verifier_ip: Some("10.0.0.2".into()),
+            ..default_verifier()
+        };
+        let reg = registrar_with(Some("10.0.0.3"), None);
+        assert_eq!(agent.resolve_ip(Some(&reg)), "10.0.0.1");
+    }
+
+    #[test]
+    fn resolve_ip_falls_back_to_verifier_ip() {
+        let agent = VerifierAgent {
+            verifier_ip: Some("10.0.0.2".into()),
+            ..default_verifier()
+        };
+        assert_eq!(agent.resolve_ip(None), "10.0.0.2");
+    }
+
+    #[test]
+    fn resolve_ip_falls_back_to_registrar() {
+        let agent = default_verifier();
+        let reg = registrar_with(Some("127.0.0.1"), None);
+        assert_eq!(agent.resolve_ip(Some(&reg)), "127.0.0.1");
+    }
+
+    #[test]
+    fn resolve_ip_returns_empty_when_all_none() {
+        let agent = default_verifier();
+        assert_eq!(agent.resolve_ip(None), "");
+    }
+
+    #[test]
+    fn resolve_ip_skips_empty_strings() {
+        let agent = VerifierAgent {
+            ip: Some("".into()),
+            verifier_ip: Some("".into()),
+            ..default_verifier()
+        };
+        let reg = registrar_with(Some("10.0.0.5"), None);
+        assert_eq!(agent.resolve_ip(Some(&reg)), "10.0.0.5");
+    }
+
+    #[test]
+    fn resolve_port_prefers_verifier() {
+        let agent = VerifierAgent {
+            port: Some(9002),
+            ..default_verifier()
+        };
+        let reg = registrar_with(None, Some(9003));
+        assert_eq!(agent.resolve_port(Some(&reg)), 9002);
+    }
+
+    #[test]
+    fn resolve_port_falls_back_to_registrar() {
+        let agent = default_verifier();
+        let reg = registrar_with(None, Some(9003));
+        assert_eq!(agent.resolve_port(Some(&reg)), 9003);
+    }
+
+    #[test]
+    fn resolve_port_skips_zero() {
+        let agent = VerifierAgent {
+            port: Some(0),
+            ..default_verifier()
+        };
+        let reg = registrar_with(None, Some(9003));
+        assert_eq!(agent.resolve_port(Some(&reg)), 9003);
+    }
+
+    #[test]
+    fn resolve_port_returns_zero_when_all_none() {
+        let agent = default_verifier();
+        assert_eq!(agent.resolve_port(None), 0);
+    }
 }

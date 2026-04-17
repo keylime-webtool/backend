@@ -53,7 +53,7 @@
       "responses": [
         {
           "uuid": "resp-reg-list-agents-001",
-          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      [\n        \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\"\n      ],\n      [\n        \"a1b2c3d4-0000-1111-2222-333344445555\"\n      ],\n      [\n        \"f7e6d5c4-b3a2-9180-7654-321098765432\"\n      ],\n      [\n        \"b2c3d4e5-a1b0-8765-4321-fedcba987654\"\n      ],\n      [\n        \"c5d6e7f8-a9b0-4321-8765-abcdef012345\"\n      ]\n    ]\n  }\n}",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"uuids\": [\n      [\n        \"d432fbb3-d2f1-4a97-9ef7-75bd81c00000\"\n      ],\n      [\n        \"a1b2c3d4-0000-1111-2222-333344445555\"\n      ],\n      [\n        \"f7e6d5c4-b3a2-9180-7654-321098765432\"\n      ],\n      [\n        \"b2c3d4e5-a1b0-8765-4321-fedcba987654\"\n      ],\n      [\n        \"c5d6e7f8-a9b0-4321-8765-abcdef012345\"\n      ],\n      [\n        \"e6f7a8b9-c0d1-2345-6789-aabbccddeeff\"\n      ]\n    ]\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "List registered agent UUIDs",
@@ -260,6 +260,42 @@
       "streamingMode": null,
       "streamingInterval": 0
     }
+    ,{
+      "uuid": "route-reg-agent-push-nullip-001",
+      "type": "http",
+      "documentation": "Registration data for push-mode agent with null ip in verifier",
+      "method": "get",
+      "endpoint": "v2/agents/e6f7a8b9-c0d1-2345-6789-aabbccddeeff",
+      "responses": [
+        {
+          "uuid": "resp-reg-agent-push-nullip-001",
+          "body": "{\n  \"code\": 200,\n  \"status\": \"Success\",\n  \"results\": {\n    \"e6f7a8b9-c0d1-2345-6789-aabbccddeeff\": {\n      \"ek_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1udWxsaXAtZWsta2V5Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=\",\n      \"aik_tpm\": \"LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KcHVzaC1udWxsaXAtYWlrLWtleQotLS0tLUVORCBQVUJMSUMgS0VZLS0tLS0K\",\n      \"ip\": \"10.0.1.60\",\n      \"port\": 9002,\n      \"regcount\": 1\n    }\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Push-mode agent with null verifier ip (registrar fallback)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
   ],
   "rootChildren": [
     {
@@ -289,6 +325,10 @@
     {
       "type": "route",
       "uuid": "route-reg-agent-push-ok-002"
+    },
+    {
+      "type": "route",
+      "uuid": "route-reg-agent-push-nullip-001"
     }
   ],
   "proxyMode": false,

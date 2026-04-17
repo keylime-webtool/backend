@@ -43,7 +43,7 @@ async fn test_mockoon_verifier_list_agents() {
     assert_eq!(body["status"], "Success");
 
     let uuids = body["results"]["uuids"].as_array().unwrap();
-    assert_eq!(uuids.len(), 5);
+    assert_eq!(uuids.len(), 6);
     // Real Keylime API returns nested arrays: [["uuid1"], ["uuid2"], ...]
     assert!(uuids
         .iter()
@@ -60,6 +60,9 @@ async fn test_mockoon_verifier_list_agents() {
     assert!(uuids
         .iter()
         .any(|u| u[0] == "c5d6e7f8-a9b0-4321-8765-abcdef012345"));
+    assert!(uuids
+        .iter()
+        .any(|u| u[0] == "e6f7a8b9-c0d1-2345-6789-aabbccddeeff"));
 }
 
 #[tokio::test]
@@ -314,7 +317,7 @@ async fn test_mockoon_registrar_list_agents() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     let uuids = body["results"]["uuids"].as_array().unwrap();
-    assert_eq!(uuids.len(), 5);
+    assert_eq!(uuids.len(), 6);
 }
 
 #[tokio::test]
@@ -436,4 +439,101 @@ async fn test_mockoon_registrar_push_ok_agent_2_detail() {
     let agent = body.results.get(agent_id).expect("agent not in results");
     assert_eq!(agent.ip, Some("10.0.1.50".to_string()));
     assert_eq!(agent.regcount, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Push-mode agent with null ip/port — exercises registrar IP fallback
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_mockoon_verifier_push_null_ip_agent() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{VERIFIER_BASE}/v2/agents/e6f7a8b9-c0d1-2345-6789-aabbccddeeff"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+
+    let body: VerifierResponse<HashMap<String, VerifierAgent>> = resp.json().await.unwrap();
+    let agent_id = "e6f7a8b9-c0d1-2345-6789-aabbccddeeff";
+    let agent = body.results.get(agent_id).expect("agent not in results");
+    assert_eq!(
+        agent.ip, None,
+        "verifier should return null ip for this push agent"
+    );
+    assert_eq!(
+        agent.port, None,
+        "verifier should return null port for this push agent"
+    );
+    assert_eq!(agent.accept_attestations, Some(true));
+    assert_eq!(agent.attestation_count, Some(5));
+}
+
+#[tokio::test]
+async fn test_mockoon_registrar_push_null_ip_agent_detail() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{REGISTRAR_BASE}/v2/agents/e6f7a8b9-c0d1-2345-6789-aabbccddeeff"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent_id = "e6f7a8b9-c0d1-2345-6789-aabbccddeeff";
+    let agent = body.results.get(agent_id).expect("agent not in results");
+    assert_eq!(agent.ip, Some("10.0.1.60".to_string()));
+    assert_eq!(agent.port, Some(9002));
+    assert_eq!(agent.regcount, 1);
+}
+
+#[tokio::test]
+async fn test_mockoon_resolve_ip_falls_back_to_registrar() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() || std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER and MOCKOON_REGISTRAR both required");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let agent_id = "e6f7a8b9-c0d1-2345-6789-aabbccddeeff";
+
+    let v_resp = client
+        .get(format!("{VERIFIER_BASE}/v2/agents/{agent_id}"))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+    let v_body: VerifierResponse<HashMap<String, VerifierAgent>> = v_resp.json().await.unwrap();
+    let verifier_agent = v_body.results.get(agent_id).unwrap();
+
+    let r_resp = client
+        .get(format!("{REGISTRAR_BASE}/v2/agents/{agent_id}"))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+    let r_body: VerifierResponse<HashMap<String, RegistrarAgent>> = r_resp.json().await.unwrap();
+    let registrar_agent = r_body.results.get(agent_id).unwrap();
+
+    assert_eq!(
+        verifier_agent.resolve_ip(Some(registrar_agent)),
+        "10.0.1.60",
+        "resolve_ip should fall back to registrar IP when verifier IP is null"
+    );
+    assert_eq!(
+        verifier_agent.resolve_port(Some(registrar_agent)),
+        9002,
+        "resolve_port should fall back to registrar port when verifier port is null"
+    );
 }
