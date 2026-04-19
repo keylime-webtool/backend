@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 /// Agent states covering both pull-mode (operational_state) and push-mode
@@ -23,6 +24,7 @@ pub enum AgentState {
     Pass = 100,
     Fail = 101,
     Pending = 102,
+    Timeout = 103,
 }
 
 impl AgentState {
@@ -33,6 +35,7 @@ impl AgentState {
                 | AgentState::InvalidQuote
                 | AgentState::TenantFailed
                 | AgentState::Fail
+                | AgentState::Timeout
         )
     }
 }
@@ -134,6 +137,7 @@ impl AgentState {
             AgentState::Pass,
             AgentState::Fail,
             AgentState::Pending,
+            AgentState::Timeout,
         ]
     }
 
@@ -148,8 +152,27 @@ impl AgentState {
             return match status.to_uppercase().as_str() {
                 "PASS" => AgentState::Pass,
                 "FAIL" => AgentState::Fail,
+                "TIMEOUT" => AgentState::Timeout,
                 _ => AgentState::Pending,
             };
+        }
+
+        // Check for timeout: agent stopped submitting attestations.
+        if let (Some(last_ts), Some(ref interval_str)) = (
+            agent.last_successful_attestation,
+            &agent.maximum_attestation_interval,
+        ) {
+            if let Ok(interval_secs) = interval_str.parse::<u64>() {
+                if interval_secs > 0 && last_ts > 0 {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    if now.saturating_sub(last_ts) > interval_secs {
+                        return AgentState::Timeout;
+                    }
+                }
+            }
         }
 
         // Fallback: compute from accept_attestations / failure count.
@@ -191,6 +214,7 @@ mod tests {
         assert!(AgentState::InvalidQuote.is_failed());
         assert!(AgentState::TenantFailed.is_failed());
         assert!(AgentState::Fail.is_failed());
+        assert!(AgentState::Timeout.is_failed());
     }
 
     #[test]
@@ -213,7 +237,7 @@ mod tests {
 
     #[test]
     fn all_states_returns_all_variants() {
-        assert_eq!(AgentState::all().len(), 13);
+        assert_eq!(AgentState::all().len(), 14);
     }
 
     #[test]
@@ -230,6 +254,15 @@ mod tests {
         let state = AgentState::Pass;
         let json = serde_json::to_string(&state).unwrap();
         assert_eq!(json, "\"PASS\"");
+        let deserialized: AgentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, state);
+    }
+
+    #[test]
+    fn timeout_state_serde_roundtrip() {
+        let state = AgentState::Timeout;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"TIMEOUT\"");
         let deserialized: AgentState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, state);
     }

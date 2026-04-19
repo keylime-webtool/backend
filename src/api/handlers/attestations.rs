@@ -326,6 +326,7 @@ pub async fn get_failures(
                     AgentState::InvalidQuote => "QUOTE_INVALID",
                     AgentState::TenantFailed => "POLICY_VIOLATION",
                     AgentState::Fail => "ATTESTATION_TIMEOUT",
+                    AgentState::Timeout => "ATTESTATION_TIMEOUT",
                     _ => "UNKNOWN",
                 };
                 failures.push(serde_json::json!({

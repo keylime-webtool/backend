@@ -43,7 +43,7 @@ async fn test_mockoon_verifier_list_agents() {
     assert_eq!(body["status"], "Success");
 
     let uuids = body["results"]["uuids"].as_array().unwrap();
-    assert_eq!(uuids.len(), 6);
+    assert_eq!(uuids.len(), 7);
     // Real Keylime API returns nested arrays: [["uuid1"], ["uuid2"], ...]
     assert!(uuids
         .iter()
@@ -63,6 +63,9 @@ async fn test_mockoon_verifier_list_agents() {
     assert!(uuids
         .iter()
         .any(|u| u[0] == "e6f7a8b9-c0d1-2345-6789-aabbccddeeff"));
+    assert!(uuids
+        .iter()
+        .any(|u| u[0] == "d1e2f3a4-b5c6-7890-1234-567890abcdef"));
 }
 
 #[tokio::test]
@@ -451,6 +454,38 @@ async fn test_mockoon_registrar_push_ok_agent_2_detail() {
     let agent = body.results.get(agent_id).expect("agent not in results");
     assert_eq!(agent.ip, Some("10.0.1.50".to_string()));
     assert_eq!(agent.regcount, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Push-mode agent that stopped attesting — exercises Timeout state detection
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_mockoon_verifier_push_timeout_agent() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{VERIFIER_BASE}/v2/agents/d1e2f3a4-b5c6-7890-1234-567890abcdef"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+
+    let body: VerifierResponse<HashMap<String, VerifierAgent>> = resp.json().await.unwrap();
+    let agent_id = "d1e2f3a4-b5c6-7890-1234-567890abcdef";
+    let agent = body.results.get(agent_id).expect("agent not in results");
+    assert_eq!(agent.ip, Some("10.0.1.60".to_string()));
+    assert_eq!(agent.port, Some(9002));
+    assert_eq!(agent.accept_attestations, Some(true));
+    assert_eq!(agent.attestation_count, Some(25));
+    assert_eq!(agent.last_successful_attestation, Some(1700000000));
+    assert_eq!(agent.maximum_attestation_interval, Some("60".to_string()));
+    assert_eq!(agent.consecutive_attestation_failures, Some(0));
 }
 
 // ---------------------------------------------------------------------------

@@ -248,7 +248,7 @@ The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment
 
 ### Mock fleet
 
-The mock data defines a fleet of 6 agents in different states:
+The mock data defines a fleet of 7 agents in different states:
 
 | Agent UUID | Mode | State | Description |
 |-----------|------|-------|-------------|
@@ -258,6 +258,7 @@ The mock data defines a fleet of 6 agents in different states:
 | `b2c3d4e5-a1b0-8765-4321-fedcba987654` | Push | FAIL | Failed push-mode agent, IMA `production-v1`, attestation timeout + 3 consecutive failures |
 | `c5d6e7f8-a9b0-4321-8765-abcdef012345` | Push | PASS | Healthy push-mode agent, IMA policy `production-v1`, attestation_count=78 |
 | `e6f7a8b9-c0d1-2345-6789-aabbccddeeff` | Push | PASS | Null ip/port push agent (registrar fallback), IMA `production-v1`, attestation_count=5 |
+| `d1e2f3a4-b5c6-7890-1234-567890abcdef` | Push | TIMEOUT | Push-mode agent that stopped attesting, IMA `production-v1`, last attestation far in past |
 
 Policies are served from two Keylime API endpoints: IMA policies from `GET /v2/allowlists/` (`production-v1`, `staging-v2`) and measured boot policies from `GET /v2/mbpolicies/` (`measured-boot-v1`).
 
