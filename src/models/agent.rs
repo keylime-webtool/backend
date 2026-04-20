@@ -162,7 +162,8 @@ impl AgentState {
             agent.last_successful_attestation,
             &agent.maximum_attestation_interval,
         ) {
-            if let Ok(interval_secs) = interval_str.parse::<u64>() {
+            let numeric_part = interval_str.trim_end_matches(|c: char| c.is_alphabetic());
+            if let Ok(interval_secs) = numeric_part.parse::<u64>() {
                 if interval_secs > 0 && last_ts > 0 {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
