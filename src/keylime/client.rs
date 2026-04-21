@@ -479,3 +479,154 @@ impl std::fmt::Debug for KeylimeClient {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keylime::models::{RegistrarAgent, VerifierAgent};
+
+    // ── CircuitBreaker ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn circuit_breaker_starts_closed() {
+        let cb = CircuitBreaker::new(3, 60);
+        assert_eq!(cb.state().await, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn circuit_breaker_opens_after_threshold() {
+        let cb = CircuitBreaker::new(3, 60);
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::Closed);
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::Closed);
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::Open);
+    }
+
+    #[tokio::test]
+    async fn circuit_breaker_resets_on_success() {
+        let cb = CircuitBreaker::new(2, 60);
+        cb.record_failure().await;
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::Open);
+        cb.record_success().await;
+        assert_eq!(cb.state().await, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn circuit_breaker_half_open_after_timeout() {
+        // With reset_timeout=0s the breaker transitions to HalfOpen as soon
+        // as any time elapses after the failure — which is immediate.
+        let cb = CircuitBreaker::new(1, 0);
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::HalfOpen);
+    }
+
+    #[tokio::test]
+    async fn circuit_breaker_failure_count_resets_on_success() {
+        let cb = CircuitBreaker::new(3, 60);
+        cb.record_failure().await;
+        cb.record_failure().await;
+        cb.record_success().await;
+        // After success, count resets — one more failure should not open
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, CircuitState::Closed);
+    }
+
+    // ── extract_agent ───────────────────────────────────────────────────
+
+    #[test]
+    fn extract_agent_nested_format() {
+        let json = serde_json::json!({
+            "d432fbb3-d2f1-4a97-9ef7-75bd81c00000": {
+                "ip": "10.0.1.10",
+                "port": 9002,
+                "hash_alg": "sha256",
+                "enc_alg": "rsa",
+                "sign_alg": "rsassa"
+            }
+        });
+        let agent: VerifierAgent = extract_agent(
+            json,
+            "d432fbb3-d2f1-4a97-9ef7-75bd81c00000",
+            |a: &mut VerifierAgent, id| a.agent_id = id,
+        )
+        .unwrap();
+        assert_eq!(agent.agent_id, "d432fbb3-d2f1-4a97-9ef7-75bd81c00000");
+        assert_eq!(agent.ip, Some("10.0.1.10".into()));
+        assert_eq!(agent.port, Some(9002));
+    }
+
+    #[test]
+    fn extract_agent_flat_format() {
+        let json = serde_json::json!({
+            "ip": "10.0.1.20",
+            "port": 9002,
+            "hash_alg": "sha256",
+            "enc_alg": "rsa",
+            "sign_alg": "rsassa"
+        });
+        let agent: VerifierAgent = extract_agent(
+            json,
+            "a1b2c3d4-0000-1111-2222-333344445555",
+            |a: &mut VerifierAgent, id| a.agent_id = id,
+        )
+        .unwrap();
+        assert_eq!(agent.agent_id, "a1b2c3d4-0000-1111-2222-333344445555");
+        assert_eq!(agent.ip, Some("10.0.1.20".into()));
+    }
+
+    #[test]
+    fn extract_agent_registrar_nested() {
+        let json = serde_json::json!({
+            "agent-uuid": {
+                "ip": "10.0.1.30",
+                "port": 9002,
+                "regcount": 1,
+                "ek_tpm": "ek-data",
+                "aik_tpm": "aik-data"
+            }
+        });
+        let agent: RegistrarAgent =
+            extract_agent(json, "agent-uuid", |a: &mut RegistrarAgent, id| {
+                a.agent_id = id
+            })
+            .unwrap();
+        assert_eq!(agent.agent_id, "agent-uuid");
+        assert_eq!(agent.ip, Some("10.0.1.30".into()));
+        assert_eq!(agent.regcount, 1);
+    }
+
+    #[test]
+    fn extract_agent_empty_results_flat() {
+        let json = serde_json::json!({});
+        let agent: VerifierAgent =
+            extract_agent(json, "some-id", |a: &mut VerifierAgent, id| a.agent_id = id).unwrap();
+        assert_eq!(agent.agent_id, "some-id");
+        assert_eq!(agent.ip, None);
+    }
+
+    // ── PolicyListResults serde ─────────────────────────────────────────
+
+    #[test]
+    fn policy_list_deserializes_with_alias() {
+        let json = r#"{"runtimepolicy names": ["prod-v1", "staging-v2"]}"#;
+        let result: PolicyListResults = serde_json::from_str(json).unwrap();
+        assert_eq!(result.policy_names, vec!["prod-v1", "staging-v2"]);
+    }
+
+    #[test]
+    fn mb_policy_list_deserializes_with_alias() {
+        let json = r#"{"mbpolicy names": ["boot-v1"]}"#;
+        let result: MbPolicyListResults = serde_json::from_str(json).unwrap();
+        assert_eq!(result.policy_names, vec!["boot-v1"]);
+    }
+
+    #[test]
+    fn policy_list_defaults_to_empty() {
+        let json = r#"{}"#;
+        let result: PolicyListResults = serde_json::from_str(json).unwrap();
+        assert!(result.policy_names.is_empty());
+    }
+}

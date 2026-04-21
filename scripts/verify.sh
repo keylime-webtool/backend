@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# verify.sh — Run all commit checks: code quality + commit message.
+# verify.sh — Run all commit checks: code quality + coverage + commit message.
 #
 # Combines the pre-commit checks (formatting, clippy, build, tests, audit)
-# with the Signed-off-by verification on the latest commit.
+# with code coverage (cargo-tarpaulin) and Signed-off-by verification.
 #
 # Usage:
 #   bash scripts/verify.sh          # run all checks
-#   bash scripts/verify.sh --quick  # skip slow checks (audit, machete)
+#   bash scripts/verify.sh --quick  # skip slow checks (audit, machete, coverage)
 
 set -euo pipefail
 
@@ -22,6 +22,13 @@ else
     RED='' GREEN='' BOLD='' RESET=''
 fi
 
+QUICK=0
+for arg in "$@"; do
+    case "$arg" in
+        --quick) QUICK=1 ;;
+    esac
+done
+
 overall=0
 
 # ── 1. Code quality checks (pre-commit) ──────────────────────────────
@@ -33,7 +40,27 @@ fi
 
 echo ""
 
-# ── 2. Signed-off-by check (last commit) ─────────────────────────────
+# ── 2. Code coverage (coverage.yml) ─────────────────────────────────
+echo -e "${BOLD}=== Code coverage ===${RESET}"
+echo ""
+if [ "$QUICK" -eq 1 ]; then
+    echo -e "  ${GREEN}SKIP${RESET}  coverage (--quick mode)"
+elif ! command -v cargo-tarpaulin >/dev/null 2>&1; then
+    echo -e "  ${GREEN}SKIP${RESET}  coverage (cargo-tarpaulin not installed)"
+else
+    printf "  %-20s" "tarpaulin"
+    if cargo tarpaulin -o Json -o Xml --output-dir coverage/ >/dev/null 2>&1; then
+        total=$(jq .coverage coverage/tarpaulin-report.json 2>/dev/null | grep -oE "[0-9]{1,3}\.[0-9]{0,2}" || echo "?")
+        echo -e "${GREEN}OK${RESET}  (line coverage: ${total}%)"
+    else
+        echo -e "${RED}FAIL${RESET}"
+        overall=1
+    fi
+fi
+
+echo ""
+
+# ── 3. Signed-off-by check (last commit) ─────────────────────────────
 echo -e "${BOLD}=== Commit message checks ===${RESET}"
 echo ""
 
