@@ -71,6 +71,8 @@ pub struct AlertSummary {
     pub critical: u64,
     pub warnings: u64,
     pub info: u64,
+    pub active_alerts: u64,
+    pub active_critical: u64,
     pub resolved_24h: u64,
 }
 

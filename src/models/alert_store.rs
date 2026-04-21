@@ -198,27 +198,32 @@ impl AlertStore {
 
         let critical = alerts
             .iter()
-            .filter(|a| {
-                a.severity == AlertSeverity::Critical
-                    && !matches!(a.state, AlertState::Resolved | AlertState::Dismissed)
-            })
+            .filter(|a| a.severity == AlertSeverity::Critical)
             .count() as u64;
 
         let warnings = alerts
             .iter()
-            .filter(|a| {
-                a.severity == AlertSeverity::Warning
-                    && !matches!(a.state, AlertState::Resolved | AlertState::Dismissed)
-            })
+            .filter(|a| a.severity == AlertSeverity::Warning)
             .count() as u64;
 
         let info = alerts
             .iter()
-            .filter(|a| {
-                a.severity == AlertSeverity::Info
-                    && !matches!(a.state, AlertState::Resolved | AlertState::Dismissed)
-            })
+            .filter(|a| a.severity == AlertSeverity::Info)
             .count() as u64;
+
+        let is_active =
+            |a: &&Alert| !matches!(a.state, AlertState::Resolved | AlertState::Dismissed);
+
+        let active_critical = alerts
+            .iter()
+            .filter(|a| a.severity == AlertSeverity::Critical && is_active(a))
+            .count() as u64;
+
+        let active_alerts = active_critical
+            + alerts
+                .iter()
+                .filter(|a| a.severity == AlertSeverity::Warning && is_active(a))
+                .count() as u64;
 
         let resolved_24h = alerts
             .iter()
@@ -229,6 +234,8 @@ impl AlertStore {
             critical,
             warnings,
             info,
+            active_alerts,
+            active_critical,
             resolved_24h,
         }
     }
@@ -451,11 +458,15 @@ mod tests {
     fn summary_counts_active_alerts() {
         let store = AlertStore::new_with_seed_data();
         let summary = store.summary();
-        // 2 critical total, but 1 is under_investigation (active), 1 is new (active)
+        // 2 critical total (all severities counted regardless of state)
         assert_eq!(summary.critical, 2);
-        // 2 warnings total, but 1 is acknowledged (active), 1 is new (active)
+        // 2 warnings total
         assert_eq!(summary.warnings, 2);
-        // 2 info total, but 1 is resolved and 1 is dismissed (both terminal)
-        assert_eq!(summary.info, 0);
+        // 2 info total (resolved + dismissed now included)
+        assert_eq!(summary.info, 2);
+        // active_alerts = non-terminal critical + warning (2 + 2)
+        assert_eq!(summary.active_alerts, 4);
+        // active_critical = non-terminal critical only
+        assert_eq!(summary.active_critical, 2);
     }
 }
