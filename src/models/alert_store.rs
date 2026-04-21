@@ -212,6 +212,14 @@ impl AlertStore {
             })
             .count() as u64;
 
+        let info = alerts
+            .iter()
+            .filter(|a| {
+                a.severity == AlertSeverity::Info
+                    && !matches!(a.state, AlertState::Resolved | AlertState::Dismissed)
+            })
+            .count() as u64;
+
         let resolved_24h = alerts
             .iter()
             .filter(|a| a.state == AlertState::Resolved && a.created_timestamp >= day_ago)
@@ -220,6 +228,7 @@ impl AlertStore {
         AlertSummary {
             critical,
             warnings,
+            info,
             resolved_24h,
         }
     }
@@ -446,5 +455,7 @@ mod tests {
         assert_eq!(summary.critical, 2);
         // 2 warnings total, but 1 is acknowledged (active), 1 is new (active)
         assert_eq!(summary.warnings, 2);
+        // 2 info total, but 1 is resolved and 1 is dismissed (both terminal)
+        assert_eq!(summary.info, 0);
     }
 }
