@@ -8,6 +8,7 @@
 #   - cargo-machete.yml (unused dependencies)
 #   - shellcheck.yml    (shell script linting)
 #   - curl-integration.yaml (end-to-end curl tests)
+#   - coverage.yml      (cargo-tarpaulin — via verify.sh only)
 #
 # Usage:
 #   bash scripts/pre-commit.sh          # run all checks
