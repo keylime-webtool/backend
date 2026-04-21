@@ -534,6 +534,108 @@ async fn test_mockoon_verifier_push_null_ip_agent() {
 }
 
 #[tokio::test]
+async fn test_mockoon_verifier_push_timeout_state_computation() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let agent_id = "d1e2f3a4-b5c6-7890-1234-567890abcdef";
+    let resp = client
+        .get(format!("{VERIFIER_BASE}/v2/agents/{agent_id}"))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+
+    let body: VerifierResponse<HashMap<String, VerifierAgent>> = resp.json().await.unwrap();
+    let agent = body.results.get(agent_id).expect("agent not in results");
+
+    let state = keylime_webtool_backend::models::agent::AgentState::from_push_agent(agent);
+    assert_eq!(
+        state,
+        keylime_webtool_backend::models::agent::AgentState::Timeout,
+        "agent with stale last_successful_attestation should compute as Timeout"
+    );
+
+    let serialized = serde_json::to_string(&state).unwrap();
+    assert_eq!(serialized, "\"TIMEOUT\"");
+}
+
+#[tokio::test]
+async fn test_mockoon_timeout_state_filter_excludes_other_states() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{VERIFIER_BASE}/v2/agents/"))
+        .send()
+        .await
+        .expect("Failed to reach Verifier mock");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let uuids = body["results"]["uuids"].as_array().unwrap();
+
+    let mut timeout_agents = Vec::new();
+    let mut non_timeout_agents = Vec::new();
+
+    for entry in uuids {
+        let id = entry[0].as_str().unwrap();
+        let resp = client
+            .get(format!("{VERIFIER_BASE}/v2/agents/{id}"))
+            .send()
+            .await
+            .unwrap();
+        if resp.status() != 200 {
+            continue;
+        }
+        let agent_body: VerifierResponse<HashMap<String, VerifierAgent>> =
+            resp.json().await.unwrap();
+        let agent = match agent_body.results.values().next() {
+            Some(a) => a.clone(),
+            None => continue,
+        };
+
+        let state = if agent.is_push_mode() {
+            keylime_webtool_backend::models::agent::AgentState::from_push_agent(&agent)
+        } else {
+            keylime_webtool_backend::models::agent::AgentState::from_operational_state(
+                &agent.operational_state,
+            )
+            .unwrap()
+        };
+
+        let state_str = serde_json::to_string(&state).unwrap();
+        let state_str = state_str.trim_matches('"').to_string();
+
+        if state_str == "TIMEOUT" {
+            timeout_agents.push(id.to_string());
+        } else {
+            non_timeout_agents.push((id.to_string(), state_str));
+        }
+    }
+
+    assert!(
+        !timeout_agents.is_empty(),
+        "mock fleet should contain at least one TIMEOUT agent"
+    );
+    assert!(
+        !non_timeout_agents.is_empty(),
+        "mock fleet should contain agents in non-TIMEOUT states"
+    );
+
+    for (id, state_str) in &non_timeout_agents {
+        assert_ne!(
+            state_str, "TIMEOUT",
+            "agent {id} should not be in TIMEOUT state"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_mockoon_registrar_push_null_ip_agent_detail() {
     if std::env::var("MOCKOON_REGISTRAR").is_err() {
         eprintln!("Skipping: MOCKOON_REGISTRAR not set");

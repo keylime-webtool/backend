@@ -276,4 +276,50 @@ mod tests {
         let deserialized: AttestationMode = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, mode);
     }
+
+    fn default_verifier() -> crate::keylime::models::VerifierAgent {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    #[test]
+    fn from_push_agent_timeout_via_attestation_status() {
+        let agent = crate::keylime::models::VerifierAgent {
+            attestation_status: Some("TIMEOUT".into()),
+            accept_attestations: Some(true),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Timeout);
+    }
+
+    #[test]
+    fn from_push_agent_timeout_via_stale_attestation() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(25),
+            consecutive_attestation_failures: Some(0),
+            last_successful_attestation: Some(1_700_000_000),
+            maximum_attestation_interval: Some("60".into()),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Timeout);
+    }
+
+    #[test]
+    fn from_push_agent_pass_not_timeout() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(42),
+            consecutive_attestation_failures: Some(0),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Pass);
+    }
+
+    #[test]
+    fn timeout_state_filter_matches_serialized_form() {
+        let state = AgentState::Timeout;
+        let serialized = serde_json::to_string(&state).unwrap();
+        let serialized = serialized.trim_matches('"');
+        assert_eq!(serialized, "TIMEOUT".to_uppercase());
+    }
 }
