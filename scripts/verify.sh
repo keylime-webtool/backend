@@ -49,8 +49,9 @@ elif ! command -v cargo-tarpaulin >/dev/null 2>&1; then
     echo -e "  ${GREEN}SKIP${RESET}  coverage (cargo-tarpaulin not installed)"
 else
     printf "  %-20s" "tarpaulin"
-    if cargo tarpaulin --out xml --output-dir coverage/ >/dev/null 2>&1; then
-        echo -e "${GREEN}OK${RESET}"
+    if cargo tarpaulin -o Json -o Xml --output-dir coverage/ >/dev/null 2>&1; then
+        total=$(jq .coverage coverage/tarpaulin-report.json 2>/dev/null | grep -oE "[0-9]{1,3}\.[0-9]{0,2}" || echo "?")
+        echo -e "${GREEN}OK${RESET}  (line coverage: ${total}%)"
     else
         echo -e "${RED}FAIL${RESET}"
         overall=1
