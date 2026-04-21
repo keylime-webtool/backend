@@ -193,8 +193,6 @@ impl AlertStore {
     /// Compute summary statistics.
     pub fn summary(&self) -> AlertSummary {
         let alerts = self.alerts.read().unwrap();
-        let now = Utc::now();
-        let day_ago = now - Duration::hours(24);
 
         let critical = alerts
             .iter()
@@ -225,18 +223,12 @@ impl AlertStore {
                 .filter(|a| a.severity == AlertSeverity::Warning && is_active(a))
                 .count() as u64;
 
-        let resolved_24h = alerts
-            .iter()
-            .filter(|a| a.state == AlertState::Resolved && a.created_timestamp >= day_ago)
-            .count() as u64;
-
         AlertSummary {
             critical,
             warnings,
             info,
             active_alerts,
             active_critical,
-            resolved_24h,
         }
     }
 
