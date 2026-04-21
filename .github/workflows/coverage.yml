@@ -34,13 +34,13 @@ jobs:
         if: steps.changes.outputs.rust == 'true'
         run: |
           set -eu
-          total=$(jq .coverage tarpaulin-report.json | grep -oE "[0-9]{1,3}\.[0-9]{0,2}")
+          total=$(jq .coverage coverage/tarpaulin-report.json | grep -oE "[0-9]{1,3}\.[0-9]{0,2}")
           echo "COVERAGE: ${total}%"
       - name: Report coverage in PR status
         if: steps.changes.outputs.rust == 'true' && github.event_name == 'pull_request'
         run: |
           set -eu
-          total=$(jq .coverage tarpaulin-report.json | grep -oE "[0-9]{1,3}\.[0-9]{0,2}")
+          total=$(jq .coverage coverage/tarpaulin-report.json | grep -oE "[0-9]{1,3}\.[0-9]{0,2}")
           curl -s \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             "https://api.github.com/repos/${{ github.repository }}/statuses/${COMMIT_SHA}" \
