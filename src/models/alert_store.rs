@@ -217,11 +217,12 @@ impl AlertStore {
             .filter(|a| a.severity == AlertSeverity::Critical && is_active(a))
             .count() as u64;
 
-        let active_alerts = active_critical
-            + alerts
-                .iter()
-                .filter(|a| a.severity == AlertSeverity::Warning && is_active(a))
-                .count() as u64;
+        let active_warnings = alerts
+            .iter()
+            .filter(|a| a.severity == AlertSeverity::Warning && is_active(a))
+            .count() as u64;
+
+        let active_alerts = active_critical + active_warnings;
 
         AlertSummary {
             critical,
@@ -229,6 +230,7 @@ impl AlertStore {
             info,
             active_alerts,
             active_critical,
+            active_warnings,
         }
     }
 
@@ -460,5 +462,7 @@ mod tests {
         assert_eq!(summary.active_alerts, 4);
         // active_critical = non-terminal critical only
         assert_eq!(summary.active_critical, 2);
+        // active_warnings = non-terminal warning only
+        assert_eq!(summary.active_warnings, 2);
     }
 }
