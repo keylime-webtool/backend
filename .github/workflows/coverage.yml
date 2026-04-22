@@ -45,7 +45,7 @@ jobs:
           echo "| **Line coverage** | **${total}%** |" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage report
         if: steps.changes.outputs.rust == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/cobertura.xml
