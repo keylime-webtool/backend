@@ -73,6 +73,7 @@ pub struct AlertSummary {
     pub info: u64,
     pub active_alerts: u64,
     pub active_critical: u64,
+    pub active_warnings: u64,
 }
 
 /// Notification for external channels (FR-010).
