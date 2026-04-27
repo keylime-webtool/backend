@@ -161,10 +161,13 @@ curl http://localhost:8080/api/performance/capacity | jq
 curl http://localhost:8080/api/compliance/frameworks | jq
 curl http://localhost:8080/api/compliance/reports/nist-sp-800-155 | jq
 
-# Integrations (durable, revocation, SIEM)
+# Integrations (durable, revocation, SIEM, SSH)
 curl http://localhost:8080/api/integrations/durable | jq
 curl http://localhost:8080/api/integrations/revocation-channels | jq
 curl http://localhost:8080/api/integrations/siem | jq
+# SSH reachability probe (requires Operator+ role, SSH must be enabled in config)
+# curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/integrations/ssh-check/verifier | jq
+# curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/integrations/ssh-check/registrar | jq
 
 # Agent actions (reactivate, stop, delete)
 curl -X POST http://localhost:8080/api/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000/actions/reactivate | jq

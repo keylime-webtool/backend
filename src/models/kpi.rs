@@ -30,6 +30,10 @@ pub struct ServiceHealth {
     pub status: ServiceStatus,
     pub uptime_seconds: Option<u64>,
     pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh_host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssh_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,10 +105,14 @@ mod tests {
             status: ServiceStatus::Up,
             uptime_seconds: Some(86400),
             latency_ms: Some(12),
+            ssh_host: None,
+            ssh_port: None,
         };
         let json = serde_json::to_value(&health).unwrap();
         assert_eq!(json["name"], "verifier");
         assert_eq!(json["status"], "UP");
         assert_eq!(json["uptime_seconds"], 86400);
+        assert!(json.get("ssh_host").is_none());
+        assert!(json.get("ssh_port").is_none());
     }
 }

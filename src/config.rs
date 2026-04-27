@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -12,6 +14,8 @@ pub struct AppConfig {
     pub audit: AuditConfig,
     #[serde(default)]
     pub integrations: IntegrationsConfig,
+    #[serde(default)]
+    pub ssh: SshConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +137,27 @@ pub struct EmailConfig {
     pub smtp_port: u16,
 }
 
+/// SSH connectivity configuration for the topology view (FR-086).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SshConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_ssh_port")]
+    pub default_port: u16,
+    #[serde(default)]
+    pub ports: HashMap<String, u16>,
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            default_port: default_ssh_port(),
+            ports: HashMap::new(),
+        }
+    }
+}
+
 // Defaults
 
 fn default_host() -> String {
@@ -179,4 +204,7 @@ fn default_retention_days() -> u32 {
 }
 fn default_hash_algorithm() -> String {
     "sha256".to_string()
+}
+fn default_ssh_port() -> u16 {
+    22
 }

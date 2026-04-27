@@ -1,9 +1,11 @@
+use axum::middleware;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 use crate::state::AppState;
 
 use super::handlers;
+use super::middleware::require_write;
 use super::ws;
 
 /// Build the complete API router with all route groups.
@@ -185,6 +187,10 @@ fn integration_routes() -> Router<AppState> {
             get(handlers::integrations::revocation_channels),
         )
         .route("/siem", get(handlers::integrations::siem_status))
+        .route(
+            "/ssh-check/{service_name}",
+            get(handlers::integrations::ssh_check).layer(middleware::from_fn(require_write)),
+        )
 }
 
 fn performance_routes() -> Router<AppState> {
