@@ -6,11 +6,12 @@ use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use keylime_webtool_backend::api::routes;
-use keylime_webtool_backend::config::KeylimeConfig;
+use keylime_webtool_backend::config::{CacheConfig, KeylimeConfig};
 use keylime_webtool_backend::keylime::client::KeylimeClient;
 use keylime_webtool_backend::models::alert_store::AlertStore;
 use keylime_webtool_backend::settings_store;
 use keylime_webtool_backend::state::AppState;
+use keylime_webtool_backend::storage::cache::Cache;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -55,7 +56,24 @@ async fn main() -> anyhow::Result<()> {
 
     let alert_store = AlertStore::new_with_seed_data();
 
-    let state = AppState::new(keylime_client, alert_store, config_path);
+    let cache = match std::env::var("REDIS_URL") {
+        Ok(url) => {
+            let cache_config = CacheConfig::with_url(url);
+            match Cache::connect(&cache_config).await {
+                Ok(c) => {
+                    tracing::info!("Redis cache connected");
+                    Some(c)
+                }
+                Err(e) => {
+                    tracing::warn!("Redis unavailable, caching disabled: {e}");
+                    None
+                }
+            }
+        }
+        Err(_) => None,
+    };
+
+    let state = AppState::new(keylime_client, alert_store, config_path, cache);
 
     let app = routes::build_router(state);
 

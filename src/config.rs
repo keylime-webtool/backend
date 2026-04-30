@@ -86,6 +86,18 @@ pub struct CacheConfig {
     pub ttl_certs_secs: u64,
 }
 
+impl CacheConfig {
+    pub fn with_url(redis_url: String) -> Self {
+        Self {
+            redis_url,
+            ttl_agent_list_secs: default_ttl_agent_list(),
+            ttl_agent_detail_secs: default_ttl_agent_detail(),
+            ttl_policies_secs: default_ttl_policies(),
+            ttl_certs_secs: default_ttl_certs(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AuthConfig {
     pub oidc: OidcConfig,

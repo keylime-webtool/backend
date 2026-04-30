@@ -5,6 +5,7 @@ use crate::config::SshConfig;
 use crate::keylime::client::KeylimeClient;
 use crate::models::alert_store::AlertStore;
 use crate::settings_store::{self, PersistedKeylime, PersistedSettings};
+use crate::storage::cache::Cache;
 
 /// Shared application state passed to Axum handlers via `State<AppState>`.
 #[derive(Clone)]
@@ -13,6 +14,7 @@ pub struct AppState {
     pub alert_store: Arc<AlertStore>,
     config_path: Option<PathBuf>,
     ssh_config: Arc<SshConfig>,
+    cache: Option<Cache>,
 }
 
 impl AppState {
@@ -20,12 +22,14 @@ impl AppState {
         keylime: KeylimeClient,
         alert_store: AlertStore,
         config_path: Option<PathBuf>,
+        cache: Option<Cache>,
     ) -> Self {
         Self {
             keylime_inner: Arc::new(RwLock::new(Arc::new(keylime))),
             alert_store: Arc::new(alert_store),
             config_path,
             ssh_config: Arc::new(SshConfig::default()),
+            cache,
         }
     }
 
@@ -36,6 +40,10 @@ impl AppState {
 
     pub fn ssh_config(&self) -> &SshConfig {
         &self.ssh_config
+    }
+
+    pub fn cache(&self) -> Option<&Cache> {
+        self.cache.as_ref()
     }
 
     /// Get a snapshot of the current KeylimeClient (cheap Arc clone).
