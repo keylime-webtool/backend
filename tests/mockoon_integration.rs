@@ -813,7 +813,7 @@ async fn test_mockoon_ek_tpm_public_key_not_parseable_as_x509() {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!(
-            "{REGISTRAR_BASE}/v2/agents/a1b2c3d4-0000-1111-2222-333344445555"
+            "{REGISTRAR_BASE}/v2/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
         ))
         .send()
         .await
@@ -822,14 +822,152 @@ async fn test_mockoon_ek_tpm_public_key_not_parseable_as_x509() {
     let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
     let agent = body
         .results
-        .get("a1b2c3d4-0000-1111-2222-333344445555")
+        .get("d432fbb3-d2f1-4a97-9ef7-75bd81c00000")
         .unwrap();
 
-    // This agent has no ekcert, only ek_tpm (which is a public key, not X.509)
-    assert!(agent.ekcert.is_none() || agent.ekcert.as_deref() == Some(""));
+    // ek_tpm is a public key (not X.509) — should not parse as a certificate
     let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(&agent.ek_tpm);
     assert!(
         parsed.is_none(),
         "bare public key should not parse as X.509"
     );
+}
+
+#[tokio::test]
+async fn test_mockoon_failed_agent_has_expired_ekcert() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let agent_id = "a1b2c3d4-0000-1111-2222-333344445555";
+    let resp = client
+        .get(format!("{REGISTRAR_BASE}/v2/agents/{agent_id}"))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent = body.results.get(agent_id).unwrap();
+
+    let ekcert = agent
+        .ekcert
+        .as_deref()
+        .expect("failed agent should have ekcert");
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(ekcert);
+    assert!(parsed.is_some(), "ekcert should parse as valid X.509");
+
+    let info = parsed.unwrap();
+    assert!(
+        info.subject_dn.contains("Expired EK Certificate"),
+        "subject DN should contain 'Expired EK Certificate', got: {}",
+        info.subject_dn
+    );
+
+    let now = chrono::Utc::now();
+    let status = keylime_webtool_backend::keylime::cert_parser::compute_status(info.not_after, now);
+    assert_eq!(
+        status,
+        keylime_webtool_backend::models::certificate::CertificateStatus::Expired,
+        "failed agent's ekcert should be expired"
+    );
+}
+
+#[tokio::test]
+async fn test_mockoon_push_agent_has_warning_ekcert() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let agent_id = "f7e6d5c4-b3a2-9180-7654-321098765432";
+    let resp = client
+        .get(format!("{REGISTRAR_BASE}/v2/agents/{agent_id}"))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent = body.results.get(agent_id).unwrap();
+
+    let ekcert = agent
+        .ekcert
+        .as_deref()
+        .expect("push agent should have ekcert");
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(ekcert);
+    assert!(parsed.is_some(), "ekcert should parse as valid X.509");
+
+    let info = parsed.unwrap();
+    assert!(
+        info.subject_dn.contains("Warning EK Certificate"),
+        "subject DN should contain 'Warning EK Certificate', got: {}",
+        info.subject_dn
+    );
+
+    let now = chrono::Utc::now();
+    let category =
+        keylime_webtool_backend::keylime::cert_parser::compute_expiry_category(info.not_after, now);
+    assert!(
+        matches!(
+            category,
+            keylime_webtool_backend::models::certificate::ExpiryCategory::Warning90d
+                | keylime_webtool_backend::models::certificate::ExpiryCategory::Warning30d
+        ),
+        "push agent's ekcert should be in a warning category, got: {category:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_mockoon_all_agents_have_ekcert() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let agent_ids = [
+        "d432fbb3-d2f1-4a97-9ef7-75bd81c00000",
+        "a1b2c3d4-0000-1111-2222-333344445555",
+        "f7e6d5c4-b3a2-9180-7654-321098765432",
+        "b2c3d4e5-a1b0-8765-4321-fedcba987654",
+        "c5d6e7f8-a9b0-4321-8765-abcdef012345",
+        "e6f7a8b9-c0d1-2345-6789-aabbccddeeff",
+    ];
+
+    let client = reqwest::Client::new();
+    for agent_id in agent_ids {
+        let resp = client
+            .get(format!("{REGISTRAR_BASE}/v2/agents/{agent_id}"))
+            .send()
+            .await
+            .expect("Failed to reach Registrar mock");
+
+        let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+        let agent = body.results.get(agent_id).unwrap();
+
+        assert!(
+            agent.ekcert.as_ref().is_some_and(|s| !s.is_empty()),
+            "agent {agent_id} should have an ekcert"
+        );
+        let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(
+            agent.ekcert.as_deref().unwrap(),
+        );
+        assert!(
+            parsed.is_some(),
+            "agent {agent_id}'s ekcert should parse as X.509"
+        );
+
+        assert!(
+            agent.mtls_cert.as_ref().is_some_and(|s| !s.is_empty()),
+            "agent {agent_id} should have an mtls_cert"
+        );
+        let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(
+            agent.mtls_cert.as_deref().unwrap(),
+        );
+        assert!(
+            parsed.is_some(),
+            "agent {agent_id}'s mtls_cert should parse as X.509"
+        );
+    }
 }
