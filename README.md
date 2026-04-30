@@ -195,10 +195,11 @@ curl -X PUT -H "Content-Type: application/json" \
   -d '{"attestation_success_rate":0.95,"cert_expiry_days":30}' \
   http://localhost:8080/api/alerts/thresholds | jq                          # stub
 
-# Certificate details (ID from the /api/certificates list)
-CERT_ID=$(curl -sf http://localhost:8080/api/certificates | jq -r '.data[0].id')
-curl http://localhost:8080/api/certificates/$CERT_ID | jq
-curl -X POST http://localhost:8080/api/certificates/$CERT_ID/renew | jq    # stub
+# Certificate details (by agent ID and cert type: ek, ak, mtls)
+AGENT_ID=$(curl -sf http://localhost:8080/api/certificates | jq -r '.data[0].agent_id')
+curl http://localhost:8080/api/certificates/$AGENT_ID/ek | jq
+curl "http://localhost:8080/api/certificates/$AGENT_ID/ek?format=pem"      # PEM export
+curl http://localhost:8080/api/certificates/expiry | jq                    # expiry summary
 
 # Audit log (stubs -- not yet implemented)
 curl http://localhost:8080/api/audit-log | jq

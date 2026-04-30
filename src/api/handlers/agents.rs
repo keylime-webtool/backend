@@ -1,12 +1,14 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::api::handlers::certificates::build_agent_cert_summaries;
 use crate::api::response::{ApiResponse, PaginatedResponse};
 use crate::error::{AppError, AppResult};
 use crate::models::agent::{AgentState, AgentSummary, AttestationMode};
+use crate::models::certificate::Certificate;
 use crate::state::AppState;
 
 /// Query parameters for agent list filtering (FR-014).
@@ -214,11 +216,17 @@ pub async fn get_agent(
         "accept_tpm_signing_algs": verifier_agent.accept_tpm_signing_algs,
     });
 
-    if let Some(reg) = registrar_agent {
+    if let Some(ref reg) = registrar_agent {
+        let now = Utc::now();
+        let cert_summaries = build_agent_cert_summaries(reg, now);
         if let Some(obj) = combined.as_object_mut() {
             obj.insert("ek_tpm".into(), serde_json::json!(reg.ek_tpm));
             obj.insert("aik_tpm".into(), serde_json::json!(reg.aik_tpm));
             obj.insert("regcount".into(), serde_json::json!(reg.regcount));
+            obj.insert(
+                "certificates".into(),
+                serde_json::to_value(&cert_summaries).unwrap_or_default(),
+            );
         }
     }
 
@@ -484,24 +492,12 @@ pub async fn get_boot_log(
 pub async fn get_agent_certs(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> AppResult<Json<ApiResponse<Vec<serde_json::Value>>>> {
+) -> AppResult<Json<ApiResponse<Vec<Certificate>>>> {
     let id_str = id.to_string();
     let reg = state.keylime().get_registrar_agent(&id_str).await?;
+    let now = Utc::now();
 
-    let certs = vec![
-        serde_json::json!({
-            "type": "EK",
-            "label": "Endorsement Key",
-            "data": reg.ek_tpm,
-            "source": "registrar",
-        }),
-        serde_json::json!({
-            "type": "AK",
-            "label": "Attestation Key",
-            "data": reg.aik_tpm,
-            "source": "registrar",
-        }),
-    ];
+    let certs = super::certificates::collect_agent_certs(&reg, now);
 
     Ok(Json(ApiResponse::ok(certs)))
 }

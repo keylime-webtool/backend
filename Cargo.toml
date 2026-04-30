@@ -42,6 +42,10 @@ metrics-exporter-prometheus = "0.16"
 # HTTP client (for Keylime API calls)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# X.509 certificate parsing
+x509-parser = { version = "0.16", features = ["verify"] }
+base64 = "0.22"
+
 # Utilities
 anyhow = "1"
 thiserror = "2"
@@ -83,3 +87,5 @@ mockoon = []
 tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", features = ["json"] }
+rcgen = "0.13"
+time = "0.3"

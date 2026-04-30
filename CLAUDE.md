@@ -68,7 +68,7 @@ Browser (React SPA) --TLS 1.3--> Backend (this repo) --mTLS--> Keylime Verifier/
 2. **Agent Management** -- sortable/filterable fleet list, agent detail with 6 tabs (Timeline, PCR Values, IMA Log, Boot Log, Certificates, Raw Data), bulk operations
 3. **Attestation Analytics** -- failure categorization by type/severity, cross-agent correlation, root cause suggestions, policy rollback
 4. **Policy Management** -- IMA and measured boot policy CRUD with versioning, impact analysis, two-person approval (drafter != approver)
-5. **Certificate Management** -- unified view (EK, AK, IAK, IDevID, mTLS, server certs), tiered expiry alerts (30-day window)
+5. **Certificate Management** -- unified view (EK, AK, mTLS certs), tiered expiry alerts (30/90-day window), X.509 parsing with PEM/DER export
 6. **Security Audit** -- tamper-evident hash-chained audit logging with RFC 3161 anchoring, RBAC enforcement
 7. **Integrations** -- SIEM (Syslog CEF/LEEF, Splunk HEC, Elastic Common Schema), Prometheus metrics, OpenTelemetry traces
 

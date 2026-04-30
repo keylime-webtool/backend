@@ -361,6 +361,16 @@ async fn test_mockoon_registrar_agent_detail() {
     assert_eq!(agent.regcount, 1);
     assert!(!agent.ek_tpm.is_empty());
     assert!(!agent.aik_tpm.is_empty());
+
+    // FR-050: Healthy agent should have ekcert (X.509) and mtls_cert
+    assert!(
+        agent.ekcert.as_ref().is_some_and(|s| !s.is_empty()),
+        "healthy agent should have an ekcert field"
+    );
+    assert!(
+        agent.mtls_cert.as_ref().is_some_and(|s| !s.is_empty()),
+        "healthy agent should have an mtls_cert field"
+    );
 }
 
 #[tokio::test]
@@ -708,5 +718,118 @@ async fn test_mockoon_resolve_ip_falls_back_to_registrar() {
         verifier_agent.resolve_port(None),
         0,
         "resolve_port(None) should return 0 when no registrar"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Certificate parsing tests (FR-050/051/052)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_mockoon_healthy_agent_ekcert_is_parseable_x509() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{REGISTRAR_BASE}/v2/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent = body
+        .results
+        .get("d432fbb3-d2f1-4a97-9ef7-75bd81c00000")
+        .unwrap();
+
+    let ekcert = agent.ekcert.as_deref().expect("ekcert should be present");
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(ekcert);
+    assert!(parsed.is_some(), "ekcert should parse as valid X.509");
+
+    let info = parsed.unwrap();
+    assert!(
+        info.subject_dn.contains("Test EK Certificate"),
+        "subject DN should contain 'Test EK Certificate', got: {}",
+        info.subject_dn
+    );
+    assert!(
+        info.issuer_dn.contains("TPM Manufacturer"),
+        "issuer DN should contain 'TPM Manufacturer', got: {}",
+        info.issuer_dn
+    );
+    assert!(!info.serial_number.is_empty());
+    assert_eq!(info.public_key_algorithm, "RSA");
+}
+
+#[tokio::test]
+async fn test_mockoon_healthy_agent_mtls_cert_is_parseable_x509() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{REGISTRAR_BASE}/v2/agents/d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent = body
+        .results
+        .get("d432fbb3-d2f1-4a97-9ef7-75bd81c00000")
+        .unwrap();
+
+    let mtls = agent
+        .mtls_cert
+        .as_deref()
+        .expect("mtls_cert should be present");
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(mtls);
+    assert!(parsed.is_some(), "mtls_cert should parse as valid X.509");
+
+    let info = parsed.unwrap();
+    assert!(
+        info.subject_dn.contains("agent-d432fbb3"),
+        "subject DN should reference the agent, got: {}",
+        info.subject_dn
+    );
+}
+
+#[tokio::test]
+async fn test_mockoon_ek_tpm_public_key_not_parseable_as_x509() {
+    if std::env::var("MOCKOON_REGISTRAR").is_err() {
+        eprintln!("Skipping: MOCKOON_REGISTRAR not set");
+        return;
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!(
+            "{REGISTRAR_BASE}/v2/agents/a1b2c3d4-0000-1111-2222-333344445555"
+        ))
+        .send()
+        .await
+        .expect("Failed to reach Registrar mock");
+
+    let body: VerifierResponse<HashMap<String, RegistrarAgent>> = resp.json().await.unwrap();
+    let agent = body
+        .results
+        .get("a1b2c3d4-0000-1111-2222-333344445555")
+        .unwrap();
+
+    // This agent has no ekcert, only ek_tpm (which is a public key, not X.509)
+    assert!(agent.ekcert.is_none() || agent.ekcert.as_deref() == Some(""));
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(&agent.ek_tpm);
+    assert!(
+        parsed.is_none(),
+        "bare public key should not parse as X.509"
     );
 }

@@ -565,10 +565,9 @@ echo ""
 # -- Certificate details --
 echo "  Certificate Details"
 echo "  -------------------"
-CERT_ID=$(curl -sf "${BACKEND_URL}/api/certificates" 2>/dev/null | jq -r '.data[0].id' 2>/dev/null)
+CERT_ID=$(curl -sf "${BACKEND_URL}/api/certificates" 2>/dev/null | jq -r '.data.items[0].id // empty' 2>/dev/null) || true
 if [ -n "$CERT_ID" ] && [ "$CERT_ID" != "null" ]; then
     run_test "Get certificate by ID"             "/api/certificates/${CERT_ID}"
-    run_stub_test "Renew certificate"     "POST" "/api/certificates/${CERT_ID}/renew"
 else
     echo "  (skipped -- no certificate IDs available)"
 fi

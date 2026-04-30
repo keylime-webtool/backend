@@ -131,10 +131,19 @@ fn certificate_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::certificates::list_certificates))
         .route("/expiry", get(handlers::certificates::expiry_summary))
+        .route(
+            "/expiry-summary",
+            get(handlers::certificates::expiry_summary),
+        )
+        .route("/timeline", get(handlers::certificates::timeline))
         .route("/{id}", get(handlers::certificates::get_certificate))
         .route(
-            "/{id}/renew",
-            post(handlers::certificates::renew_certificate),
+            "/{id}/download/pem",
+            get(handlers::certificates::download_pem),
+        )
+        .route(
+            "/{id}/download/der",
+            get(handlers::certificates::download_der),
         )
 }
 
