@@ -136,9 +136,9 @@ pub fn collect_agent_certs(
         now,
     ));
 
-    // mTLS certificate (only if present)
+    // mTLS certificate (only if present; real Keylime returns "disabled" when not configured)
     if let Some(ref mtls) = reg.mtls_cert {
-        if !mtls.is_empty() {
+        if !mtls.is_empty() && mtls != "disabled" {
             certs.push(build_cert_entry(
                 &agent_uuid,
                 mtls,
