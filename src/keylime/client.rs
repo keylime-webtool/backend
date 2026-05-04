@@ -343,12 +343,31 @@ impl KeylimeClient {
     }
 
     /// GET /v2/agents/ -- list registered agent IDs from the Registrar.
+    ///
+    /// The Verifier returns `uuids` as nested arrays `[["uuid1"], ...]` while
+    /// the Registrar returns a flat array `["uuid1", ...]`.  Handle both.
     pub async fn list_registrar_agents(&self) -> AppResult<Vec<String>> {
         let url = format!("{}/v2/agents/", self.registrar_url);
         let resp = self
-            .get_json::<VerifierResponse<AgentListResults>>(&url)
+            .get_json::<VerifierResponse<serde_json::Value>>(&url)
             .await?;
-        Ok(resp.results.uuids.into_iter().flatten().collect())
+        let uuids = resp
+            .results
+            .get("uuids")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(uuids
+            .into_iter()
+            .filter_map(|v| match v {
+                serde_json::Value::String(s) => Some(s),
+                serde_json::Value::Array(arr) => arr
+                    .into_iter()
+                    .next()
+                    .and_then(|v| v.as_str().map(String::from)),
+                _ => None,
+            })
+            .collect())
     }
 
     /// GET /v2/agents/{agent_id} -- agent registration data from the Registrar.

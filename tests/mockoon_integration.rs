@@ -333,6 +333,12 @@ async fn test_mockoon_registrar_list_agents() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let uuids = body["results"]["uuids"].as_array().unwrap();
     assert_eq!(uuids.len(), 6);
+    // Registrar returns flat strings, not nested arrays like the Verifier
+    assert!(
+        uuids[0].is_string(),
+        "registrar uuids should be flat strings, got: {:?}",
+        uuids[0]
+    );
 }
 
 #[tokio::test]
