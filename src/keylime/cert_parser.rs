@@ -23,15 +23,32 @@ pub struct ParsedCertInfo {
     pub der_data: Vec<u8>,
 }
 
-/// Try to parse raw cert data (base64-encoded PEM or DER) into X.509.
+/// Try to parse cert data into X.509.
+///
+/// Accepts three formats produced by the Keylime Registrar API:
+/// 1. Raw PEM string  (`"-----BEGIN CERTIFICATE-----\n..."`)  — `mtls_cert` field
+/// 2. Base64-encoded PEM  (`"LS0tLS1CRUdJTi..."`)            — mock data compat
+/// 3. Base64-encoded DER  (`"MIIE..."`)                       — `ekcert` field
+///
 /// Returns `None` if the data is not a valid X.509 certificate.
-pub fn try_parse_x509(raw_b64: &str) -> Option<ParsedCertInfo> {
-    let decoded = B64.decode(raw_b64.trim()).ok()?;
+pub fn try_parse_x509(raw: &str) -> Option<ParsedCertInfo> {
+    let trimmed = raw.trim();
 
-    // Check if it's PEM-encoded (starts with "-----BEGIN")
+    // Raw PEM string (real Keylime Registrar returns mtls_cert this way)
+    if trimmed.starts_with("-----BEGIN") {
+        let (_, pem) = x509_parser::pem::parse_x509_pem(trimmed.as_bytes()).ok()?;
+        if pem.label != "CERTIFICATE" {
+            return None;
+        }
+        let (_, cert) = X509Certificate::from_der(&pem.contents).ok()?;
+        return Some(extract_cert_info(&cert, trimmed, pem.contents.to_vec()));
+    }
+
+    // Base64-encoded data (PEM or DER)
+    let decoded = B64.decode(trimmed).ok()?;
+
     if decoded.starts_with(b"-----BEGIN") {
         let pem_str = String::from_utf8(decoded).ok()?;
-        // Try parsing as certificate PEM
         let (_, pem) = x509_parser::pem::parse_x509_pem(pem_str.as_bytes()).ok()?;
         if pem.label != "CERTIFICATE" {
             return None;
@@ -40,7 +57,7 @@ pub fn try_parse_x509(raw_b64: &str) -> Option<ParsedCertInfo> {
         return Some(extract_cert_info(&cert, &pem_str, pem.contents.to_vec()));
     }
 
-    // Try parsing as raw DER
+    // Base64-encoded DER (real Keylime Registrar returns ekcert this way)
     let der_copy = decoded.clone();
     if let Ok((_, cert)) = X509Certificate::from_der(&der_copy) {
         let pem_str = pem_encode(&decoded, "CERTIFICATE");
@@ -394,5 +411,52 @@ mod tests {
             compute_expiry_category(now + Duration::days(365), now),
             ExpiryCategory::Valid
         );
+    }
+
+    #[test]
+    fn parse_base64_der_certificate() {
+        let b64_der = make_test_cert_der_b64(-30, 365);
+        let parsed = try_parse_x509(&b64_der);
+        assert!(
+            parsed.is_some(),
+            "base64(DER) cert should parse (Keylime ekcert format)"
+        );
+        let info = parsed.unwrap();
+        assert!(!info.subject_dn.is_empty());
+        assert!(!info.der_data.is_empty());
+        assert!(info.pem_data.starts_with("-----BEGIN CERTIFICATE-----"));
+    }
+
+    #[test]
+    fn parse_raw_pem_certificate() {
+        use rcgen::{CertificateParams, KeyPair};
+        let mut params = CertificateParams::default();
+        let nb = Utc::now() - Duration::days(30);
+        let na = Utc::now() + Duration::days(365);
+        params.not_before = chrono_to_time(nb);
+        params.not_after = chrono_to_time(na);
+        let key_pair = KeyPair::generate().unwrap();
+        let cert = params.self_signed(&key_pair).unwrap();
+        let raw_pem = cert.pem();
+
+        let parsed = try_parse_x509(&raw_pem);
+        assert!(
+            parsed.is_some(),
+            "raw PEM string should parse (Keylime mtls_cert format)"
+        );
+        let info = parsed.unwrap();
+        assert!(!info.subject_dn.is_empty());
+        assert!(!info.der_data.is_empty());
+    }
+
+    #[test]
+    fn parse_raw_pem_public_key_returns_none() {
+        let raw_pem = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\n-----END PUBLIC KEY-----\n";
+        assert!(try_parse_x509(raw_pem).is_none());
+    }
+
+    #[test]
+    fn parse_disabled_mtls_cert_returns_none() {
+        assert!(try_parse_x509("disabled").is_none());
     }
 }

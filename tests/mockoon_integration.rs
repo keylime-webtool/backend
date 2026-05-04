@@ -333,6 +333,12 @@ async fn test_mockoon_registrar_list_agents() {
     let body: serde_json::Value = resp.json().await.unwrap();
     let uuids = body["results"]["uuids"].as_array().unwrap();
     assert_eq!(uuids.len(), 6);
+    // Registrar returns flat strings, not nested arrays like the Verifier
+    assert!(
+        uuids[0].is_string(),
+        "registrar uuids should be flat strings, got: {:?}",
+        uuids[0]
+    );
 }
 
 #[tokio::test]
@@ -767,7 +773,7 @@ async fn test_mockoon_healthy_agent_ekcert_is_parseable_x509() {
 }
 
 #[tokio::test]
-async fn test_mockoon_healthy_agent_mtls_cert_is_parseable_x509() {
+async fn test_mockoon_healthy_agent_mtls_cert_disabled() {
     if std::env::var("MOCKOON_REGISTRAR").is_err() {
         eprintln!("Skipping: MOCKOON_REGISTRAR not set");
         return;
@@ -792,15 +798,12 @@ async fn test_mockoon_healthy_agent_mtls_cert_is_parseable_x509() {
         .mtls_cert
         .as_deref()
         .expect("mtls_cert should be present");
-    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(mtls);
-    assert!(parsed.is_some(), "mtls_cert should parse as valid X.509");
-
-    let info = parsed.unwrap();
-    assert!(
-        info.subject_dn.contains("agent-d432fbb3"),
-        "subject DN should reference the agent, got: {}",
-        info.subject_dn
+    assert_eq!(
+        mtls, "disabled",
+        "healthy agent mtls_cert should be 'disabled' (matching real Keylime format)"
     );
+    let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(mtls);
+    assert!(parsed.is_none(), "'disabled' should not parse as X.509");
 }
 
 #[tokio::test]
@@ -958,16 +961,13 @@ async fn test_mockoon_all_agents_have_ekcert() {
             "agent {agent_id}'s ekcert should parse as X.509"
         );
 
-        assert!(
-            agent.mtls_cert.as_ref().is_some_and(|s| !s.is_empty()),
-            "agent {agent_id} should have an mtls_cert"
-        );
-        let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(
-            agent.mtls_cert.as_deref().unwrap(),
-        );
-        assert!(
-            parsed.is_some(),
-            "agent {agent_id}'s mtls_cert should parse as X.509"
-        );
+        let mtls = agent.mtls_cert.as_deref().unwrap_or("");
+        if mtls != "disabled" && !mtls.is_empty() {
+            let parsed = keylime_webtool_backend::keylime::cert_parser::try_parse_x509(mtls);
+            assert!(
+                parsed.is_some(),
+                "agent {agent_id}'s mtls_cert should parse as X.509"
+            );
+        }
     }
 }
