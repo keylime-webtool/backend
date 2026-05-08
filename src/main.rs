@@ -10,9 +10,7 @@ use keylime_webtool_backend::api::routes;
 use keylime_webtool_backend::config::KeylimeConfig;
 use keylime_webtool_backend::keylime::client::KeylimeClient;
 use keylime_webtool_backend::repository::{
-    AlertRepository, AttestationRepository, AuditRepository, CacheBackend,
-    FallbackAttestationRepository, InMemoryAlertRepository, InMemoryAuditRepository,
-    InMemoryCacheBackend, InMemoryPolicyRepository, PolicyRepository, RedisCacheBackend,
+    CacheBackend, InMemoryCacheBackend, RedisCacheBackend, Repositories, SqliteDb,
 };
 use keylime_webtool_backend::settings_store;
 use keylime_webtool_backend::state::AppState;
@@ -55,8 +53,22 @@ async fn main() -> anyhow::Result<()> {
 
     let keylime_client = KeylimeClient::new(keylime_config)?;
 
-    let alert_repo: Arc<dyn AlertRepository> =
-        Arc::new(InMemoryAlertRepository::new_with_seed_data());
+    let repos = match std::env::var("DATABASE_URL") {
+        Ok(url) if url.starts_with("sqlite:") => {
+            let db = SqliteDb::connect(&url).await?;
+            db.init_schema().await?;
+            tracing::info!("SQLite database connected: {url}");
+            db.repositories()
+        }
+        Ok(url) => {
+            tracing::warn!("Unsupported DATABASE_URL scheme: {url} — using in-memory repos");
+            Repositories::in_memory()
+        }
+        Err(_) => {
+            tracing::info!("No DATABASE_URL set, using in-memory repositories");
+            Repositories::in_memory()
+        }
+    };
 
     let cache: Arc<dyn CacheBackend> = match std::env::var("REDIS_URL") {
         Ok(url) => match RedisCacheBackend::connect(&url).await {
@@ -72,17 +84,12 @@ async fn main() -> anyhow::Result<()> {
         Err(_) => Arc::new(InMemoryCacheBackend::new()),
     };
 
-    let attestation_repo: Arc<dyn AttestationRepository> =
-        Arc::new(FallbackAttestationRepository::new());
-    let policy_repo: Arc<dyn PolicyRepository> = Arc::new(InMemoryPolicyRepository::new());
-    let audit_repo: Arc<dyn AuditRepository> = Arc::new(InMemoryAuditRepository::new());
-
     let state = AppState::new(
         keylime_client,
-        alert_repo,
-        attestation_repo,
-        policy_repo,
-        audit_repo,
+        repos.alert,
+        repos.attestation,
+        repos.policy,
+        repos.audit,
         cache,
         config_path,
     );
