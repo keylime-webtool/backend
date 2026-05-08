@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::api::response::ApiResponse;
 use crate::error::{AppError, AppResult};
+use crate::keylime::models::VerifierAgent;
 use crate::models::agent::AgentState;
 use crate::models::attestation::{
     AttestationResult, CorrelatedIncident, FailureType, PipelineResult, PipelineStage, StageStatus,
@@ -120,50 +121,28 @@ async fn record_agent_observations(state: &AppState) {
     }
 }
 
-/// Snapshot-based attestation counts used as first-startup fallback
-/// when the repository has no stored observations yet.
-struct AgentAttestation {
-    successful: u64,
-    failed: u64,
-    latency_samples: Vec<u64>,
+fn keylime_success_count(agent: &VerifierAgent) -> u64 {
+    agent.attestation_count.unwrap_or(0)
 }
 
-fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> AgentAttestation {
-    if agent.is_push_mode() {
-        let total_count = agent.attestation_count.unwrap_or(0);
-        let consecutive_failures = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
-        let state = AgentState::from_push_agent(agent);
-        let failed = if consecutive_failures > 0 {
-            consecutive_failures
-        } else if state.is_failed() {
-            1
-        } else {
-            0
-        };
-        let successful = total_count.saturating_sub(failed);
-        let samples = if total_count > 0 { vec![45; 1] } else { vec![] };
-        AgentAttestation {
-            successful,
-            failed,
-            latency_samples: samples,
-        }
-    } else {
-        let agent_state = AgentState::from_operational_state(&agent.operational_state)
-            .unwrap_or(AgentState::Failed);
-        if agent_state.is_failed() {
-            AgentAttestation {
-                successful: 0,
-                failed: 1,
-                latency_samples: vec![50],
-            }
-        } else {
-            AgentAttestation {
-                successful: 1,
-                failed: 0,
-                latency_samples: vec![42],
-            }
+fn keylime_consecutive_failures(agent: &VerifierAgent) -> u64 {
+    agent.consecutive_attestation_failures.unwrap_or(0) as u64
+}
+
+async fn sum_keylime_attestation_counts(state: &AppState) -> (u64, u64) {
+    let agent_ids = match state.keylime().list_verifier_agents().await {
+        Ok(ids) => ids,
+        Err(_) => return (0, 0),
+    };
+    let mut total_successful: u64 = 0;
+    let mut total_consecutive_failures: u64 = 0;
+    for id_str in &agent_ids {
+        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
+            total_successful += keylime_success_count(&agent);
+            total_consecutive_failures += keylime_consecutive_failures(&agent);
         }
     }
+    (total_successful, total_consecutive_failures)
 }
 
 /// GET /api/attestations/summary -- Analytics overview KPIs (FR-024).
@@ -175,45 +154,15 @@ pub async fn get_summary(
 
     record_agent_observations(&state).await;
 
-    let (total_successful, total_failed) = state
+    let (keylime_successful, keylime_consecutive) = sum_keylime_attestation_counts(&state).await;
+
+    let (_, repo_failed) = state
         .attestation_repo
         .query_counts(range_start, range_end)
         .await?;
 
-    if total_successful == 0 && total_failed == 0 {
-        let agent_ids = state.keylime().list_verifier_agents().await?;
-        let mut fallback_successful: u64 = 0;
-        let mut fallback_failed: u64 = 0;
-        let mut latency_samples: Vec<u64> = Vec::new();
-
-        for id_str in &agent_ids {
-            if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-                let stats = derive_agent_attestation(&agent);
-                fallback_successful += stats.successful;
-                fallback_failed += stats.failed;
-                latency_samples.extend(stats.latency_samples);
-            }
-        }
-
-        let total = fallback_successful + fallback_failed;
-        let success_rate = if total > 0 {
-            (fallback_successful as f64 / total as f64) * 100.0
-        } else {
-            100.0
-        };
-        let average_latency_ms = if latency_samples.is_empty() {
-            0.0
-        } else {
-            latency_samples.iter().sum::<u64>() as f64 / latency_samples.len() as f64
-        };
-
-        return Ok(Json(ApiResponse::ok(AttestationSummary {
-            total_successful: fallback_successful,
-            total_failed: fallback_failed,
-            average_latency_ms,
-            success_rate,
-        })));
-    }
+    let total_successful = keylime_successful;
+    let total_failed = repo_failed.max(keylime_consecutive);
 
     let total = total_successful + total_failed;
     let success_rate = if total > 0 {
@@ -239,16 +188,15 @@ pub async fn get_timeline(
 
     record_agent_observations(&state).await;
 
-    let agent_ids = state.keylime().list_verifier_agents().await?;
-    let mut fallback_successful: u64 = 0;
-    let mut fallback_failed: u64 = 0;
-    for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let stats = derive_agent_attestation(&agent);
-            fallback_successful += stats.successful;
-            fallback_failed += stats.failed;
-        }
-    }
+    let (keylime_successful, keylime_consecutive) = sum_keylime_attestation_counts(&state).await;
+
+    let (_, repo_failed) = state
+        .attestation_repo
+        .query_counts(range_start, range_end)
+        .await?;
+
+    let fallback_successful = keylime_successful;
+    let fallback_failed = repo_failed.max(keylime_consecutive);
 
     let buckets = state
         .attestation_repo

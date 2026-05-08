@@ -104,11 +104,13 @@ pub async fn list_agents(
             .filter(|&ts| ts > 0)
             .or(agent.last_received_quote.filter(|&ts| ts > 0))
             .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-        let failure_count = state
+        let repo_failures = state
             .attestation_repo
             .count_agent_failures(uuid, range_start, range_end)
             .await
-            .unwrap_or(0) as u32;
+            .unwrap_or(0);
+        let keylime_consecutive = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
+        let failure_count = repo_failures.max(keylime_consecutive) as u32;
 
         let (assigned_policy, mb_policy_resolved) =
             resolve_agent_policies(&agent, &ima_policies, &mb_policies);
@@ -302,11 +304,13 @@ pub async fn search_agents(
                 .filter(|&ts| ts > 0)
                 .or(agent.last_received_quote.filter(|&ts| ts > 0))
                 .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-            let failure_count = state
+            let repo_failures = state
                 .attestation_repo
                 .count_agent_failures(uuid, range_start, range_end)
                 .await
-                .unwrap_or(0) as u32;
+                .unwrap_or(0);
+            let keylime_consecutive = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
+            let failure_count = repo_failures.max(keylime_consecutive) as u32;
 
             let (assigned_policy, mb_policy_resolved) =
                 resolve_agent_policies(&agent, &ima_policies, &mb_policies);
