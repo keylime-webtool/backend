@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+
+use chrono::{DateTime, Utc};
 
 use crate::config::SshConfig;
 use crate::keylime::client::KeylimeClient;
@@ -7,6 +10,13 @@ use crate::repository::{
     AlertRepository, AttestationRepository, AuditRepository, CacheBackend, PolicyRepository,
 };
 use crate::settings_store::{self, PersistedKeylime, PersistedSettings};
+
+const DEDUP_INTERVAL_SECS: i64 = 30;
+
+struct AttestationSnapshot {
+    success: bool,
+    recorded_at: DateTime<Utc>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -18,6 +28,7 @@ pub struct AppState {
     pub cache: Arc<dyn CacheBackend>,
     config_path: Option<PathBuf>,
     ssh_config: Arc<SshConfig>,
+    attestation_tracker: Arc<RwLock<HashMap<String, AttestationSnapshot>>>,
 }
 
 impl AppState {
@@ -39,6 +50,7 @@ impl AppState {
             cache,
             config_path,
             ssh_config: Arc::new(SshConfig::default()),
+            attestation_tracker: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -72,5 +84,97 @@ impl AppState {
             mtls: kl.mtls_config().cloned(),
         };
         tokio::spawn(settings_store::save_persisted_settings(path, settings));
+    }
+
+    pub fn should_record_attestation(&self, agent_id: &str, success: bool) -> bool {
+        let tracker = self.attestation_tracker.read().unwrap();
+        match tracker.get(agent_id) {
+            None => true,
+            Some(snapshot) => {
+                if snapshot.success != success {
+                    return true;
+                }
+                let elapsed = Utc::now()
+                    .signed_duration_since(snapshot.recorded_at)
+                    .num_seconds();
+                elapsed >= DEDUP_INTERVAL_SECS
+            }
+        }
+    }
+
+    pub fn mark_recorded(&self, agent_id: &str, success: bool) {
+        let mut tracker = self.attestation_tracker.write().unwrap();
+        tracker.insert(
+            agent_id.to_string(),
+            AttestationSnapshot {
+                success,
+                recorded_at: Utc::now(),
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::KeylimeConfig;
+    use crate::keylime::client::KeylimeClient;
+    use crate::repository::{InMemoryCacheBackend, Repositories};
+
+    fn test_state() -> AppState {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            circuit_breaker: Default::default(),
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        let repos = Repositories::in_memory();
+        AppState::new(
+            client,
+            repos.alert,
+            repos.attestation,
+            repos.policy,
+            repos.audit,
+            Arc::new(InMemoryCacheBackend::new()),
+            None,
+        )
+    }
+
+    #[test]
+    fn dedup_tracker_records_new_agent() {
+        let state = test_state();
+        assert!(state.should_record_attestation("agent-1", true));
+    }
+
+    #[test]
+    fn dedup_tracker_blocks_duplicate_within_interval() {
+        let state = test_state();
+        state.mark_recorded("agent-1", true);
+        assert!(!state.should_record_attestation("agent-1", true));
+    }
+
+    #[test]
+    fn dedup_tracker_allows_state_change() {
+        let state = test_state();
+        state.mark_recorded("agent-1", true);
+        assert!(state.should_record_attestation("agent-1", false));
+    }
+
+    #[test]
+    fn dedup_tracker_allows_after_interval() {
+        let state = test_state();
+        {
+            let mut tracker = state.attestation_tracker.write().unwrap();
+            tracker.insert(
+                "agent-1".to_string(),
+                AttestationSnapshot {
+                    success: true,
+                    recorded_at: Utc::now() - chrono::Duration::seconds(DEDUP_INTERVAL_SECS + 1),
+                },
+            );
+        }
+        assert!(state.should_record_attestation("agent-1", true));
     }
 }

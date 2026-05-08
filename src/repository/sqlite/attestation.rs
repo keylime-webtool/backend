@@ -169,6 +169,28 @@ impl AttestationRepository for SqliteAttestationRepository {
 
         Ok(row.as_ref().map(row_to_incident))
     }
+
+    async fn query_counts(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<(u64, u64)> {
+        let row = sqlx::query(
+            "SELECT \
+             SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful, \
+             SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed \
+             FROM attestation_results \
+             WHERE timestamp >= ? AND timestamp <= ?",
+        )
+        .bind(start.to_rfc3339())
+        .bind(end.to_rfc3339())
+        .fetch_one(&self.pool)
+        .await?;
+
+        let successful = row.get::<Option<i64>, _>("successful").unwrap_or(0) as u64;
+        let failed = row.get::<Option<i64>, _>("failed").unwrap_or(0) as u64;
+        Ok((successful, failed))
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +355,36 @@ mod tests {
         let end = Utc::now() + Duration::hours(1);
         let failures = repo.list_failures(start, end).await.unwrap();
         assert!(failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sqlite_query_counts() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+
+        for _ in 0..5 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 5);
+        assert_eq!(failed, 3);
+    }
+
+    #[tokio::test]
+    async fn sqlite_query_counts_empty() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 0);
+        assert_eq!(failed, 0);
     }
 }

@@ -4,13 +4,14 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::api::response::ApiResponse;
 use crate::error::{AppError, AppResult};
 use crate::models::agent::AgentState;
 use crate::models::attestation::{
-    AttestationResult, CorrelatedIncident, PipelineResult, PipelineStage, StageStatus,
+    AttestationResult, CorrelatedIncident, FailureType, PipelineResult, PipelineStage, StageStatus,
     TimelineBucket,
 };
 use crate::models::kpi::AttestationSummary;
@@ -46,67 +47,89 @@ fn parse_range(params: &TimeRangeParams) -> (DateTime<Utc>, DateTime<Utc>) {
     (start, now)
 }
 
-/// Baseline per-agent attestation stats derived from current agent state.
-/// Since there is no attestation history table yet, we derive event counts
-/// from push-mode `attestation_count`/`consecutive_attestation_failures`
-/// fields and treat each pull-mode agent as a single attestation event.
+fn classify_failure_type(agent_state: AgentState) -> FailureType {
+    match agent_state {
+        AgentState::InvalidQuote => FailureType::QuoteInvalid,
+        AgentState::TenantFailed => FailureType::PolicyViolation,
+        AgentState::Timeout => FailureType::Timeout,
+        _ => FailureType::Unknown,
+    }
+}
+
+fn build_attestation_result(
+    agent: &crate::keylime::models::VerifierAgent,
+    agent_state: AgentState,
+) -> Option<AttestationResult> {
+    let uuid = Uuid::parse_str(&agent.agent_id).ok()?;
+    let success = !agent_state.is_failed();
+    Some(AttestationResult {
+        id: Uuid::new_v4(),
+        agent_id: uuid,
+        timestamp: Utc::now(),
+        success,
+        failure_type: if success {
+            None
+        } else {
+            Some(classify_failure_type(agent_state))
+        },
+        failure_reason: if success {
+            None
+        } else {
+            Some(format!("Agent in {:?} state", agent_state))
+        },
+        latency_ms: if agent.is_push_mode() { 45 } else { 42 },
+        verifier_id: "default".into(),
+    })
+}
+
+async fn record_agent_observations(state: &AppState) {
+    let agent_ids = match state.keylime().list_verifier_agents().await {
+        Ok(ids) => ids,
+        Err(e) => {
+            warn!("Failed to list agents for attestation recording: {e}");
+            return;
+        }
+    };
+
+    for id_str in &agent_ids {
+        let agent = match state.keylime().get_verifier_agent(id_str).await {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+
+        let agent_state = if agent.is_push_mode() {
+            AgentState::from_push_agent(&agent)
+        } else {
+            AgentState::from_operational_state(&agent.operational_state)
+                .unwrap_or(AgentState::Failed)
+        };
+
+        let success = !agent_state.is_failed();
+
+        if !state.should_record_attestation(&agent.agent_id, success) {
+            continue;
+        }
+
+        if let Some(result) = build_attestation_result(&agent, agent_state) {
+            if let Err(e) = state.attestation_repo.store_result(&result).await {
+                warn!("Failed to store attestation result for {}: {e}", id_str);
+                continue;
+            }
+            state.mark_recorded(&agent.agent_id, success);
+        }
+    }
+}
+
+/// Snapshot-based attestation counts used as first-startup fallback
+/// when the repository has no stored observations yet.
 struct AgentAttestation {
     successful: u64,
     failed: u64,
     latency_samples: Vec<u64>,
 }
 
-/// GET /api/attestations/summary -- Analytics overview KPIs (FR-024).
-///
-/// Derives stats from agent states since no attestation history table exists yet.
-/// Push-mode agents contribute their `attestation_count` and `consecutive_attestation_failures`.
-/// Pull-mode agents in a successful state count as one successful attestation;
-/// pull-mode agents in a failed state count as one failed attestation.
-pub async fn get_summary(
-    State(state): State<AppState>,
-    Query(params): Query<TimeRangeParams>,
-) -> AppResult<Json<ApiResponse<AttestationSummary>>> {
-    let (_range_start, _range_end) = parse_range(&params);
-    let agent_ids = state.keylime().list_verifier_agents().await?;
-
-    let mut total_successful: u64 = 0;
-    let mut total_failed: u64 = 0;
-    let mut latency_samples: Vec<u64> = Vec::new();
-
-    for id_str in &agent_ids {
-        if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
-            let stats = derive_agent_attestation(&agent);
-            total_successful += stats.successful;
-            total_failed += stats.failed;
-            latency_samples.extend(stats.latency_samples);
-        }
-    }
-
-    let total = total_successful + total_failed;
-    let success_rate = if total > 0 {
-        (total_successful as f64 / total as f64) * 100.0
-    } else {
-        100.0
-    };
-    let average_latency_ms = if latency_samples.is_empty() {
-        0.0
-    } else {
-        latency_samples.iter().sum::<u64>() as f64 / latency_samples.len() as f64
-    };
-
-    Ok(Json(ApiResponse::ok(AttestationSummary {
-        total_successful,
-        total_failed,
-        average_latency_ms,
-        success_rate,
-    })))
-}
-
-/// Derive attestation event counts from a single agent's current state.
 fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> AgentAttestation {
     if agent.is_push_mode() {
-        // Push-mode agent: use attestation_count and consecutive_attestation_failures,
-        // falling back to the agent state when no failure count is reported.
         let total_count = agent.attestation_count.unwrap_or(0);
         let consecutive_failures = agent.consecutive_attestation_failures.unwrap_or(0) as u64;
         let state = AgentState::from_push_agent(agent);
@@ -118,7 +141,6 @@ fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> Ag
             0
         };
         let successful = total_count.saturating_sub(failed);
-        // Estimate ~45ms per attestation for push agents
         let samples = if total_count > 0 { vec![45; 1] } else { vec![] };
         AgentAttestation {
             successful,
@@ -126,7 +148,6 @@ fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> Ag
             latency_samples: samples,
         }
     } else {
-        // Pull-mode agent: count current state as a single attestation event
         let agent_state = AgentState::from_operational_state(&agent.operational_state)
             .unwrap_or(AgentState::Failed);
         if agent_state.is_failed() {
@@ -145,32 +166,93 @@ fn derive_agent_attestation(agent: &crate::keylime::models::VerifierAgent) -> Ag
     }
 }
 
+/// GET /api/attestations/summary -- Analytics overview KPIs (FR-024).
+pub async fn get_summary(
+    State(state): State<AppState>,
+    Query(params): Query<TimeRangeParams>,
+) -> AppResult<Json<ApiResponse<AttestationSummary>>> {
+    let (range_start, range_end) = parse_range(&params);
+
+    record_agent_observations(&state).await;
+
+    let (total_successful, total_failed) = state
+        .attestation_repo
+        .query_counts(range_start, range_end)
+        .await?;
+
+    if total_successful == 0 && total_failed == 0 {
+        let agent_ids = state.keylime().list_verifier_agents().await?;
+        let mut fallback_successful: u64 = 0;
+        let mut fallback_failed: u64 = 0;
+        let mut latency_samples: Vec<u64> = Vec::new();
+
+        for id_str in &agent_ids {
+            if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
+                let stats = derive_agent_attestation(&agent);
+                fallback_successful += stats.successful;
+                fallback_failed += stats.failed;
+                latency_samples.extend(stats.latency_samples);
+            }
+        }
+
+        let total = fallback_successful + fallback_failed;
+        let success_rate = if total > 0 {
+            (fallback_successful as f64 / total as f64) * 100.0
+        } else {
+            100.0
+        };
+        let average_latency_ms = if latency_samples.is_empty() {
+            0.0
+        } else {
+            latency_samples.iter().sum::<u64>() as f64 / latency_samples.len() as f64
+        };
+
+        return Ok(Json(ApiResponse::ok(AttestationSummary {
+            total_successful: fallback_successful,
+            total_failed: fallback_failed,
+            average_latency_ms,
+            success_rate,
+        })));
+    }
+
+    let total = total_successful + total_failed;
+    let success_rate = if total > 0 {
+        (total_successful as f64 / total as f64) * 100.0
+    } else {
+        100.0
+    };
+
+    Ok(Json(ApiResponse::ok(AttestationSummary {
+        total_successful,
+        total_failed,
+        average_latency_ms: 0.0,
+        success_rate,
+    })))
+}
+
 /// GET /api/attestations/timeline -- Hourly attestation time-series (FR-024).
-///
-/// Returns hourly buckets of successful/failed attestation counts for the requested
-/// time range. Since there is no attestation history table yet, the current agent
-/// states are used to generate a baseline distribution.
 pub async fn get_timeline(
     State(state): State<AppState>,
     Query(params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<Vec<TimelineBucket>>>> {
     let (range_start, range_end) = parse_range(&params);
+
+    record_agent_observations(&state).await;
+
     let agent_ids = state.keylime().list_verifier_agents().await?;
-
-    let mut total_successful: u64 = 0;
-    let mut total_failed: u64 = 0;
-
+    let mut fallback_successful: u64 = 0;
+    let mut fallback_failed: u64 = 0;
     for id_str in &agent_ids {
         if let Ok(agent) = state.keylime().get_verifier_agent(id_str).await {
             let stats = derive_agent_attestation(&agent);
-            total_successful += stats.successful;
-            total_failed += stats.failed;
+            fallback_successful += stats.successful;
+            fallback_failed += stats.failed;
         }
     }
 
     let buckets = state
         .attestation_repo
-        .query_timeline(range_start, range_end, total_successful, total_failed)
+        .query_timeline(range_start, range_end, fallback_successful, fallback_failed)
         .await?;
 
     Ok(Json(ApiResponse::ok(buckets)))
@@ -179,10 +261,22 @@ pub async fn get_timeline(
 /// GET /api/attestations -- Attestation history (FR-024).
 pub async fn list_attestations(
     State(state): State<AppState>,
-    Query(_params): Query<TimeRangeParams>,
+    Query(params): Query<TimeRangeParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AttestationResult>>>> {
+    let (range_start, range_end) = parse_range(&params);
+
+    record_agent_observations(&state).await;
+
+    let stored = state
+        .attestation_repo
+        .list_failures(range_start, range_end)
+        .await?;
+
+    if !stored.is_empty() {
+        return Ok(Json(ApiResponse::ok(stored)));
+    }
+
     let agent_ids = state.keylime().list_verifier_agents().await?;
-    let now = chrono::Utc::now();
     let mut results = Vec::new();
 
     for id_str in &agent_ids {
@@ -193,27 +287,11 @@ pub async fn list_attestations(
                 AgentState::from_operational_state(&agent.operational_state)
                     .unwrap_or(AgentState::Failed)
             };
-            let is_failed = agent_state.is_failed();
 
-            if let Ok(uuid) = Uuid::parse_str(&agent.agent_id) {
-                results.push(AttestationResult {
-                    id: Uuid::new_v4(),
-                    agent_id: uuid,
-                    timestamp: now - chrono::Duration::minutes(5),
-                    success: !is_failed,
-                    failure_type: if is_failed {
-                        Some(crate::models::attestation::FailureType::PolicyViolation)
-                    } else {
-                        None
-                    },
-                    failure_reason: if is_failed {
-                        Some("IMA policy violation detected".into())
-                    } else {
-                        None
-                    },
-                    latency_ms: 45,
-                    verifier_id: "default".into(),
-                });
+            if let Some(result) = build_attestation_result(&agent, agent_state) {
+                if !result.success {
+                    results.push(result);
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ mod tests {
 
     use crate::audit::logger::{AuditEntryParams, AuditLogger, AuditSeverity};
     use crate::models::alert::{Alert, AlertSeverity, AlertState, AlertType};
+    use crate::models::attestation::{AttestationResult, FailureType};
     use crate::models::policy::{ApprovalStatus, Policy, PolicyChange, PolicyKind};
     use crate::repository::sqlite::{insert_test_alert, test_db};
     use crate::repository::{
@@ -754,5 +755,81 @@ mod tests {
         let new_id = Uuid::parse_str(SEED_IDS[0]).unwrap();
         let resolved_id = Uuid::parse_str(SEED_IDS[3]).unwrap();
         assert_escalate_contract(&repos.alert, new_id, resolved_id, "sqlite").await;
+    }
+
+    // ──────────────────────────────────────────────
+    // 9. Behavioral equivalence: attestation query_counts
+    // ──────────────────────────────────────────────
+
+    fn make_attestation_result(success: bool) -> AttestationResult {
+        AttestationResult {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            success,
+            failure_type: if success {
+                None
+            } else {
+                Some(FailureType::QuoteInvalid)
+            },
+            failure_reason: if success {
+                None
+            } else {
+                Some("test failure".into())
+            },
+            latency_ms: 42,
+            verifier_id: "verifier-1".into(),
+        }
+    }
+
+    async fn assert_query_counts_contract(
+        attestation: &Arc<dyn AttestationRepository>,
+        label: &str,
+    ) {
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+
+        let (s, f) = attestation.query_counts(start, end).await.unwrap();
+        assert_eq!(s, 0, "[{label}] empty repo should have 0 successful");
+        assert_eq!(f, 0, "[{label}] empty repo should have 0 failed");
+
+        for _ in 0..5 {
+            attestation
+                .store_result(&make_attestation_result(true))
+                .await
+                .unwrap();
+        }
+        for _ in 0..3 {
+            attestation
+                .store_result(&make_attestation_result(false))
+                .await
+                .unwrap();
+        }
+
+        let (s, f) = attestation.query_counts(start, end).await.unwrap();
+        assert_eq!(s, 5, "[{label}] should count 5 successful");
+        assert_eq!(f, 3, "[{label}] should count 3 failed");
+
+        let future_start = Utc::now() + Duration::hours(10);
+        let future_end = Utc::now() + Duration::hours(11);
+        let (s, f) = attestation
+            .query_counts(future_start, future_end)
+            .await
+            .unwrap();
+        assert_eq!(s, 0, "[{label}] out-of-range should return 0 successful");
+        assert_eq!(f, 0, "[{label}] out-of-range should return 0 failed");
+    }
+
+    #[tokio::test]
+    async fn query_counts_equivalence_in_memory() {
+        let repos = Repositories::in_memory();
+        assert_query_counts_contract(&repos.attestation, "in-memory").await;
+    }
+
+    #[tokio::test]
+    async fn query_counts_equivalence_sqlite() {
+        let db = test_db().await;
+        let repos = db.repositories();
+        assert_query_counts_contract(&repos.attestation, "sqlite").await;
     }
 }
