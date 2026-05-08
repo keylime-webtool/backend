@@ -30,6 +30,8 @@ pub async fn list_agents(
     State(state): State<AppState>,
     Query(params): Query<AgentListParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AgentSummary>>>> {
+    super::attestations::record_agent_observations(&state).await;
+
     // Fetch agent UUIDs from Verifier
     let agent_ids = state.keylime().list_verifier_agents().await?;
     let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;
@@ -241,6 +243,8 @@ pub async fn search_agents(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> AppResult<Json<ApiResponse<Vec<AgentSummary>>>> {
+    super::attestations::record_agent_observations(&state).await;
+
     let q = params.q.to_lowercase();
     let agent_ids = state.keylime().list_verifier_agents().await?;
     let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;

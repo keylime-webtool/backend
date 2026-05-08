@@ -83,7 +83,7 @@ fn build_attestation_result(
     })
 }
 
-async fn record_agent_observations(state: &AppState) {
+pub(crate) async fn record_agent_observations(state: &AppState) {
     let agent_ids = match state.keylime().list_verifier_agents().await {
         Ok(ids) => ids,
         Err(e) => {
@@ -457,4 +457,194 @@ pub async fn get_state_machine(
     }
 
     Ok(Json(ApiResponse::ok(distribution)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::attestation::FailureType;
+    use crate::repository::{AttestationRepository, FallbackAttestationRepository};
+
+    fn default_verifier() -> VerifierAgent {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn push_timeout_agent() -> VerifierAgent {
+        VerifierAgent {
+            agent_id: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000".into(),
+            attestation_status: Some("TIMEOUT".into()),
+            accept_attestations: Some(false),
+            attestation_count: Some(100),
+            consecutive_attestation_failures: None,
+            ..default_verifier()
+        }
+    }
+
+    fn push_timeout_agent_zero_consecutive() -> VerifierAgent {
+        VerifierAgent {
+            agent_id: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000".into(),
+            attestation_status: Some("TIMEOUT".into()),
+            accept_attestations: Some(false),
+            attestation_count: Some(100),
+            consecutive_attestation_failures: Some(0),
+            ..default_verifier()
+        }
+    }
+
+    fn push_pass_agent() -> VerifierAgent {
+        VerifierAgent {
+            agent_id: "a1b2c3d4-0000-1111-2222-333344445555".into(),
+            attestation_status: Some("PASS".into()),
+            accept_attestations: Some(true),
+            attestation_count: Some(125000),
+            consecutive_attestation_failures: Some(0),
+            ..default_verifier()
+        }
+    }
+
+    #[test]
+    fn timeout_agent_produces_failure_result() {
+        let agent = push_timeout_agent();
+        let state = AgentState::from_push_agent(&agent);
+        assert_eq!(state, AgentState::Timeout);
+
+        let result = build_attestation_result(&agent, state).unwrap();
+        assert!(!result.success);
+        assert_eq!(result.failure_type, Some(FailureType::Timeout));
+    }
+
+    #[test]
+    fn timeout_with_zero_consecutive_failures_still_produces_failure() {
+        let agent = push_timeout_agent_zero_consecutive();
+        let state = AgentState::from_push_agent(&agent);
+        assert_eq!(state, AgentState::Timeout);
+
+        assert_eq!(keylime_consecutive_failures(&agent), 0);
+
+        let result = build_attestation_result(&agent, state).unwrap();
+        assert!(!result.success);
+        assert_eq!(result.failure_type, Some(FailureType::Timeout));
+    }
+
+    #[test]
+    fn pass_agent_produces_success_result() {
+        let agent = push_pass_agent();
+        let state = AgentState::from_push_agent(&agent);
+        assert_eq!(state, AgentState::Pass);
+
+        let result = build_attestation_result(&agent, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.failure_type, None);
+    }
+
+    #[test]
+    fn keylime_success_count_reads_attestation_count() {
+        let agent = push_pass_agent();
+        assert_eq!(keylime_success_count(&agent), 125000);
+    }
+
+    #[test]
+    fn keylime_success_count_defaults_to_zero() {
+        let agent = default_verifier();
+        assert_eq!(keylime_success_count(&agent), 0);
+    }
+
+    #[test]
+    fn keylime_consecutive_failures_zero_for_timeout() {
+        let agent = push_timeout_agent_zero_consecutive();
+        assert_eq!(keylime_consecutive_failures(&agent), 0);
+    }
+
+    #[test]
+    fn keylime_consecutive_failures_none_for_timeout() {
+        let agent = push_timeout_agent();
+        assert_eq!(keylime_consecutive_failures(&agent), 0);
+    }
+
+    #[tokio::test]
+    async fn timeout_failure_stored_in_repo_despite_zero_keylime_consecutive() {
+        let agent = push_timeout_agent_zero_consecutive();
+        let state = AgentState::from_push_agent(&agent);
+        let result = build_attestation_result(&agent, state).unwrap();
+
+        let repo = FallbackAttestationRepository::new();
+        repo.store_result(&result).await.unwrap();
+
+        let agent_uuid = Uuid::parse_str(&agent.agent_id).unwrap();
+        let start = DateTime::<Utc>::MIN_UTC;
+        let end = Utc::now() + chrono::Duration::hours(1);
+        let count = repo
+            .count_agent_failures(agent_uuid, start, end)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "repo should record the TIMEOUT failure even when keylime consecutive_attestation_failures is 0");
+
+        let keylime = keylime_consecutive_failures(&agent);
+        assert_eq!(
+            keylime, 0,
+            "keylime reports 0 consecutive failures for TIMEOUT"
+        );
+
+        let failure_count = count.max(keylime) as u32;
+        assert_eq!(
+            failure_count, 1,
+            "max(repo, keylime) should pick up the repo failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn max_logic_prefers_repo_when_keylime_resets_consecutive() {
+        let repo = FallbackAttestationRepository::new();
+        let agent_id = Uuid::parse_str("d432fbb3-d2f1-4a97-9ef7-75bd81c00000").unwrap();
+
+        for _ in 0..5 {
+            let result = AttestationResult {
+                id: Uuid::new_v4(),
+                agent_id,
+                timestamp: Utc::now(),
+                success: false,
+                failure_type: Some(FailureType::Timeout),
+                failure_reason: Some("timeout".into()),
+                latency_ms: 45,
+                verifier_id: "default".into(),
+            };
+            repo.store_result(&result).await.unwrap();
+        }
+
+        let start = DateTime::<Utc>::MIN_UTC;
+        let end = Utc::now() + chrono::Duration::hours(1);
+        let repo_failures = repo
+            .count_agent_failures(agent_id, start, end)
+            .await
+            .unwrap();
+        assert_eq!(repo_failures, 5);
+
+        let keylime_consecutive: u64 = 0;
+        let failure_count = repo_failures.max(keylime_consecutive) as u32;
+        assert_eq!(
+            failure_count, 5,
+            "after recovery, keylime resets to 0 but repo retains cumulative count"
+        );
+    }
+
+    #[tokio::test]
+    async fn max_logic_prefers_keylime_when_repo_is_empty() {
+        let repo = FallbackAttestationRepository::new();
+        let agent_id = Uuid::parse_str("d432fbb3-d2f1-4a97-9ef7-75bd81c00000").unwrap();
+
+        let start = DateTime::<Utc>::MIN_UTC;
+        let end = Utc::now() + chrono::Duration::hours(1);
+        let repo_failures = repo
+            .count_agent_failures(agent_id, start, end)
+            .await
+            .unwrap();
+        assert_eq!(repo_failures, 0);
+
+        let keylime_consecutive: u64 = 3;
+        let failure_count = repo_failures.max(keylime_consecutive) as u32;
+        assert_eq!(
+            failure_count, 3,
+            "when repo has no data (e.g. fresh restart), keylime consecutive should be used"
+        );
+    }
 }
