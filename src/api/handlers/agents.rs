@@ -36,6 +36,9 @@ pub async fn list_agents(
 
     // Fetch detail for each agent to build summaries.
     // Skip agents that fail to fetch rather than failing the entire list.
+    let range_end = Utc::now();
+    let range_start = DateTime::<Utc>::MIN_UTC;
+
     let mut summaries = Vec::new();
     for id_str in &agent_ids {
         let agent = match state.keylime().get_verifier_agent(id_str).await {
@@ -101,19 +104,11 @@ pub async fn list_agents(
             .filter(|&ts| ts > 0)
             .or(agent.last_received_quote.filter(|&ts| ts > 0))
             .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-        let failure_count = if is_push {
-            agent.consecutive_attestation_failures.unwrap_or_else(|| {
-                if agent_state.is_failed() {
-                    1
-                } else {
-                    0
-                }
-            })
-        } else if agent_state.is_failed() {
-            1
-        } else {
-            0
-        };
+        let failure_count = state
+            .attestation_repo
+            .count_agent_failures(uuid, range_start, range_end)
+            .await
+            .unwrap_or(0) as u32;
 
         let (assigned_policy, mb_policy_resolved) =
             resolve_agent_policies(&agent, &ima_policies, &mb_policies);
@@ -248,6 +243,9 @@ pub async fn search_agents(
     let agent_ids = state.keylime().list_verifier_agents().await?;
     let (ima_policies, mb_policies) = fetch_policy_names_by_kind(&state).await;
 
+    let range_end = Utc::now();
+    let range_start = DateTime::<Utc>::MIN_UTC;
+
     let mut results = Vec::new();
     for id_str in &agent_ids {
         let agent = match state.keylime().get_verifier_agent(id_str).await {
@@ -304,19 +302,11 @@ pub async fn search_agents(
                 .filter(|&ts| ts > 0)
                 .or(agent.last_received_quote.filter(|&ts| ts > 0))
                 .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-            let failure_count = if is_push {
-                agent.consecutive_attestation_failures.unwrap_or_else(|| {
-                    if agent_state.is_failed() {
-                        1
-                    } else {
-                        0
-                    }
-                })
-            } else if agent_state.is_failed() {
-                1
-            } else {
-                0
-            };
+            let failure_count = state
+                .attestation_repo
+                .count_agent_failures(uuid, range_start, range_end)
+                .await
+                .unwrap_or(0) as u32;
 
             let (assigned_policy, mb_policy_resolved) =
                 resolve_agent_policies(&agent, &ima_policies, &mb_policies);

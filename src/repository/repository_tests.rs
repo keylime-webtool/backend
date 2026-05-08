@@ -832,4 +832,69 @@ mod tests {
         let repos = db.repositories();
         assert_query_counts_contract(&repos.attestation, "sqlite").await;
     }
+
+    // ──────────────────────────────────────────────
+    // 10. Behavioral equivalence: count_agent_failures
+    // ──────────────────────────────────────────────
+
+    async fn assert_count_agent_failures_contract(
+        attestation: &Arc<dyn AttestationRepository>,
+        label: &str,
+    ) {
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+
+        let c = attestation
+            .count_agent_failures(agent_a, start, end)
+            .await
+            .unwrap();
+        assert_eq!(c, 0, "[{label}] empty repo should return 0");
+
+        for _ in 0..3 {
+            let mut r = make_attestation_result(false);
+            r.agent_id = agent_a;
+            attestation.store_result(&r).await.unwrap();
+        }
+        for _ in 0..2 {
+            let mut r = make_attestation_result(false);
+            r.agent_id = agent_b;
+            attestation.store_result(&r).await.unwrap();
+        }
+        let mut r = make_attestation_result(true);
+        r.agent_id = agent_a;
+        attestation.store_result(&r).await.unwrap();
+
+        let c = attestation
+            .count_agent_failures(agent_a, start, end)
+            .await
+            .unwrap();
+        assert_eq!(c, 3, "[{label}] agent_a should have 3 failures");
+
+        let c = attestation
+            .count_agent_failures(agent_b, start, end)
+            .await
+            .unwrap();
+        assert_eq!(c, 2, "[{label}] agent_b should have 2 failures");
+
+        let c = attestation
+            .count_agent_failures(Uuid::new_v4(), start, end)
+            .await
+            .unwrap();
+        assert_eq!(c, 0, "[{label}] unknown agent should return 0");
+    }
+
+    #[tokio::test]
+    async fn count_agent_failures_equivalence_in_memory() {
+        let repos = Repositories::in_memory();
+        assert_count_agent_failures_contract(&repos.attestation, "in-memory").await;
+    }
+
+    #[tokio::test]
+    async fn count_agent_failures_equivalence_sqlite() {
+        let db = test_db().await;
+        let repos = db.repositories();
+        assert_count_agent_failures_contract(&repos.attestation, "sqlite").await;
+    }
 }

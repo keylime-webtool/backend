@@ -191,6 +191,25 @@ impl AttestationRepository for SqliteAttestationRepository {
         let failed = row.get::<Option<i64>, _>("failed").unwrap_or(0) as u64;
         Ok((successful, failed))
     }
+
+    async fn count_agent_failures(
+        &self,
+        agent_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<u64> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS cnt FROM attestation_results \
+             WHERE agent_id = ? AND success = 0 AND timestamp >= ? AND timestamp <= ?",
+        )
+        .bind(agent_id.to_string())
+        .bind(start.to_rfc3339())
+        .bind(end.to_rfc3339())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get::<i64, _>("cnt") as u64)
+    }
 }
 
 #[cfg(test)]
@@ -386,5 +405,57 @@ mod tests {
         let (successful, failed) = repo.query_counts(start, end).await.unwrap();
         assert_eq!(successful, 0);
         assert_eq!(failed, 0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_count_agent_failures() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+
+        for _ in 0..4 {
+            let mut r = make_result(false);
+            r.agent_id = agent_a;
+            repo.store_result(&r).await.unwrap();
+        }
+        for _ in 0..2 {
+            let mut r = make_result(false);
+            r.agent_id = agent_b;
+            repo.store_result(&r).await.unwrap();
+        }
+        let mut r = make_result(true);
+        r.agent_id = agent_a;
+        repo.store_result(&r).await.unwrap();
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        assert_eq!(
+            repo.count_agent_failures(agent_a, start, end)
+                .await
+                .unwrap(),
+            4
+        );
+        assert_eq!(
+            repo.count_agent_failures(agent_b, start, end)
+                .await
+                .unwrap(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_count_agent_failures_empty() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        assert_eq!(
+            repo.count_agent_failures(Uuid::new_v4(), start, end)
+                .await
+                .unwrap(),
+            0
+        );
     }
 }
