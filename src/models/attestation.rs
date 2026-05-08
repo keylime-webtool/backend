@@ -100,6 +100,14 @@ pub enum CorrelationType {
     PolicyLinked,
 }
 
+/// A single hourly bucket in the attestation timeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimelineBucket {
+    pub hour: DateTime<Utc>,
+    pub successful: u64,
+    pub failed: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
