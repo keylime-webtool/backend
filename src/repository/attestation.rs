@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::RwLock;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use uuid::Uuid;
@@ -25,6 +28,8 @@ pub trait AttestationRepository: Send + Sync + 'static {
     ) -> AppResult<Vec<AttestationResult>>;
     async fn correlate_incidents(&self) -> AppResult<Vec<CorrelatedIncident>>;
     async fn get_incident(&self, id: Uuid) -> AppResult<Option<CorrelatedIncident>>;
+    async fn query_counts(&self, start: DateTime<Utc>, end: DateTime<Utc>)
+        -> AppResult<(u64, u64)>;
 }
 
 /// Distribute `total` events across `n` buckets with deterministic variation.
@@ -77,11 +82,18 @@ fn distribute_with_variation(total: u64, n: u64) -> Vec<u64> {
     buckets
 }
 
-pub struct FallbackAttestationRepository;
+const MAX_IN_MEMORY_RESULTS: usize = 100_000;
+const DRAIN_TARGET: usize = 80_000;
+
+pub struct FallbackAttestationRepository {
+    results: RwLock<Vec<AttestationResult>>,
+}
 
 impl FallbackAttestationRepository {
     pub fn new() -> Self {
-        Self
+        Self {
+            results: RwLock::new(Vec::new()),
+        }
     }
 }
 
@@ -91,10 +103,20 @@ impl Default for FallbackAttestationRepository {
     }
 }
 
+fn in_range(ts: &DateTime<Utc>, start: &DateTime<Utc>, end: &DateTime<Utc>) -> bool {
+    ts >= start && ts <= end
+}
+
 #[async_trait]
 impl AttestationRepository for FallbackAttestationRepository {
-    async fn store_result(&self, _result: &AttestationResult) -> AppResult<()> {
-        Err(AppError::Internal("not implemented".into()))
+    async fn store_result(&self, result: &AttestationResult) -> AppResult<()> {
+        let mut results = self.results.write().unwrap();
+        results.push(result.clone());
+        if results.len() > MAX_IN_MEMORY_RESULTS {
+            let drain_count = results.len() - DRAIN_TARGET;
+            results.drain(..drain_count);
+        }
+        Ok(())
     }
 
     async fn query_timeline(
@@ -104,6 +126,40 @@ impl AttestationRepository for FallbackAttestationRepository {
         total_successful: u64,
         total_failed: u64,
     ) -> AppResult<Vec<TimelineBucket>> {
+        let results = self.results.read().unwrap();
+        let in_range_results: Vec<&AttestationResult> = results
+            .iter()
+            .filter(|r| in_range(&r.timestamp, &start, &end))
+            .collect();
+
+        if !in_range_results.is_empty() {
+            let mut hourly: HashMap<DateTime<Utc>, (u64, u64)> = HashMap::new();
+            for r in &in_range_results {
+                let hour = r
+                    .timestamp
+                    .date_naive()
+                    .and_hms_opt(r.timestamp.hour(), 0, 0)
+                    .map(|naive| DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+                    .unwrap_or(r.timestamp);
+                let entry = hourly.entry(hour).or_insert((0, 0));
+                if r.success {
+                    entry.0 += 1;
+                } else {
+                    entry.1 += 1;
+                }
+            }
+            let mut buckets: Vec<TimelineBucket> = hourly
+                .into_iter()
+                .map(|(hour, (successful, failed))| TimelineBucket {
+                    hour,
+                    successful,
+                    failed,
+                })
+                .collect();
+            buckets.sort_by_key(|b| b.hour);
+            return Ok(buckets);
+        }
+
         let total_hours = (end - start).num_hours().max(1) as u64;
 
         let start_hour = start
@@ -134,10 +190,15 @@ impl AttestationRepository for FallbackAttestationRepository {
 
     async fn list_failures(
         &self,
-        _start: DateTime<Utc>,
-        _end: DateTime<Utc>,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
     ) -> AppResult<Vec<AttestationResult>> {
-        Err(AppError::Internal("not implemented".into()))
+        let results = self.results.read().unwrap();
+        Ok(results
+            .iter()
+            .filter(|r| !r.success && in_range(&r.timestamp, &start, &end))
+            .cloned()
+            .collect())
     }
 
     async fn correlate_incidents(&self) -> AppResult<Vec<CorrelatedIncident>> {
@@ -147,11 +208,53 @@ impl AttestationRepository for FallbackAttestationRepository {
     async fn get_incident(&self, _id: Uuid) -> AppResult<Option<CorrelatedIncident>> {
         Err(AppError::Internal("not implemented".into()))
     }
+
+    async fn query_counts(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<(u64, u64)> {
+        let results = self.results.read().unwrap();
+        let mut successful = 0u64;
+        let mut failed = 0u64;
+        for r in results.iter() {
+            if in_range(&r.timestamp, &start, &end) {
+                if r.success {
+                    successful += 1;
+                } else {
+                    failed += 1;
+                }
+            }
+        }
+        Ok((successful, failed))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::attestation::FailureType;
+
+    fn make_result(success: bool) -> AttestationResult {
+        AttestationResult {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            success,
+            failure_type: if success {
+                None
+            } else {
+                Some(FailureType::QuoteInvalid)
+            },
+            failure_reason: if success {
+                None
+            } else {
+                Some("test failure".into())
+            },
+            latency_ms: 42,
+            verifier_id: "verifier-1".into(),
+        }
+    }
 
     #[test]
     fn distribute_with_variation_sums_correctly() {
@@ -186,5 +289,72 @@ mod tests {
         let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
         assert_eq!(total_success, 100);
         assert_eq!(total_failed, 10);
+    }
+
+    #[tokio::test]
+    async fn fallback_store_and_query_counts() {
+        let repo = FallbackAttestationRepository::new();
+
+        for _ in 0..5 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 5);
+        assert_eq!(failed, 3);
+    }
+
+    #[tokio::test]
+    async fn fallback_store_and_list_failures() {
+        let repo = FallbackAttestationRepository::new();
+
+        repo.store_result(&make_result(true)).await.unwrap();
+        repo.store_result(&make_result(false)).await.unwrap();
+        repo.store_result(&make_result(false)).await.unwrap();
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let failures = repo.list_failures(start, end).await.unwrap();
+        assert_eq!(failures.len(), 2);
+        assert!(failures.iter().all(|f| !f.success));
+    }
+
+    #[tokio::test]
+    async fn fallback_query_timeline_uses_stored_data() {
+        let repo = FallbackAttestationRepository::new();
+
+        for _ in 0..5 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let buckets = repo.query_timeline(start, end, 0, 0).await.unwrap();
+
+        assert!(!buckets.is_empty());
+        let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        assert_eq!(total_success, 5);
+        assert_eq!(total_failed, 2);
+    }
+
+    #[tokio::test]
+    async fn fallback_query_timeline_falls_back_when_empty() {
+        let repo = FallbackAttestationRepository::new();
+        let end = Utc::now();
+        let start = end - Duration::hours(24);
+
+        let buckets = repo.query_timeline(start, end, 50, 5).await.unwrap();
+        assert_eq!(buckets.len(), 24);
+        let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        assert_eq!(total_success, 50);
     }
 }
