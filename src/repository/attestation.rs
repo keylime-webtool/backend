@@ -30,6 +30,12 @@ pub trait AttestationRepository: Send + Sync + 'static {
     async fn get_incident(&self, id: Uuid) -> AppResult<Option<CorrelatedIncident>>;
     async fn query_counts(&self, start: DateTime<Utc>, end: DateTime<Utc>)
         -> AppResult<(u64, u64)>;
+    async fn count_agent_failures(
+        &self,
+        agent_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<u64>;
 }
 
 /// Distribute `total` events across `n` buckets with deterministic variation.
@@ -228,6 +234,22 @@ impl AttestationRepository for FallbackAttestationRepository {
         }
         Ok((successful, failed))
     }
+
+    async fn count_agent_failures(
+        &self,
+        agent_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<u64> {
+        let results = self.results.read().unwrap();
+        let count = results
+            .iter()
+            .filter(|r| {
+                r.agent_id == agent_id && !r.success && in_range(&r.timestamp, &start, &end)
+            })
+            .count();
+        Ok(count as u64)
+    }
 }
 
 #[cfg(test)]
@@ -356,5 +378,47 @@ mod tests {
         assert_eq!(buckets.len(), 24);
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
         assert_eq!(total_success, 50);
+    }
+
+    #[tokio::test]
+    async fn fallback_count_agent_failures() {
+        let repo = FallbackAttestationRepository::new();
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+
+        for _ in 0..3 {
+            let mut r = make_result(false);
+            r.agent_id = agent_a;
+            repo.store_result(&r).await.unwrap();
+        }
+        for _ in 0..2 {
+            let mut r = make_result(false);
+            r.agent_id = agent_b;
+            repo.store_result(&r).await.unwrap();
+        }
+        let mut r = make_result(true);
+        r.agent_id = agent_a;
+        repo.store_result(&r).await.unwrap();
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        assert_eq!(
+            repo.count_agent_failures(agent_a, start, end)
+                .await
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            repo.count_agent_failures(agent_b, start, end)
+                .await
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            repo.count_agent_failures(Uuid::new_v4(), start, end)
+                .await
+                .unwrap(),
+            0
+        );
     }
 }
