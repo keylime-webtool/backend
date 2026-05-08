@@ -3,33 +3,42 @@ use std::sync::{Arc, RwLock};
 
 use crate::config::SshConfig;
 use crate::keylime::client::KeylimeClient;
-use crate::models::alert_store::AlertStore;
+use crate::repository::{
+    AlertRepository, AttestationRepository, AuditRepository, CacheBackend, PolicyRepository,
+};
 use crate::settings_store::{self, PersistedKeylime, PersistedSettings};
-use crate::storage::cache::Cache;
 
-/// Shared application state passed to Axum handlers via `State<AppState>`.
 #[derive(Clone)]
 pub struct AppState {
     keylime_inner: Arc<RwLock<Arc<KeylimeClient>>>,
-    pub alert_store: Arc<AlertStore>,
+    pub alert_repo: Arc<dyn AlertRepository>,
+    pub attestation_repo: Arc<dyn AttestationRepository>,
+    pub policy_repo: Arc<dyn PolicyRepository>,
+    pub audit_repo: Arc<dyn AuditRepository>,
+    pub cache: Arc<dyn CacheBackend>,
     config_path: Option<PathBuf>,
     ssh_config: Arc<SshConfig>,
-    cache: Option<Cache>,
 }
 
 impl AppState {
     pub fn new(
         keylime: KeylimeClient,
-        alert_store: AlertStore,
+        alert_repo: Arc<dyn AlertRepository>,
+        attestation_repo: Arc<dyn AttestationRepository>,
+        policy_repo: Arc<dyn PolicyRepository>,
+        audit_repo: Arc<dyn AuditRepository>,
+        cache: Arc<dyn CacheBackend>,
         config_path: Option<PathBuf>,
-        cache: Option<Cache>,
     ) -> Self {
         Self {
             keylime_inner: Arc::new(RwLock::new(Arc::new(keylime))),
-            alert_store: Arc::new(alert_store),
+            alert_repo,
+            attestation_repo,
+            policy_repo,
+            audit_repo,
+            cache,
             config_path,
             ssh_config: Arc::new(SshConfig::default()),
-            cache,
         }
     }
 
@@ -42,24 +51,14 @@ impl AppState {
         &self.ssh_config
     }
 
-    pub fn cache(&self) -> Option<&Cache> {
-        self.cache.as_ref()
-    }
-
-    /// Get a snapshot of the current KeylimeClient (cheap Arc clone).
     pub fn keylime(&self) -> Arc<KeylimeClient> {
         self.keylime_inner.read().unwrap().clone()
     }
 
-    /// Replace the KeylimeClient with a new one (used by settings API).
     pub fn swap_keylime(&self, new_client: KeylimeClient) {
         *self.keylime_inner.write().unwrap() = Arc::new(new_client);
     }
 
-    /// Persist the current keylime settings to the config file (if configured).
-    ///
-    /// This is fire-and-forget: failures are logged as warnings but never
-    /// propagate to the caller.
     pub fn persist_settings(&self) {
         let Some(path) = self.config_path.clone() else {
             return;

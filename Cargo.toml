@@ -46,6 +46,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 x509-parser = { version = "0.16", features = ["verify"] }
 base64 = "0.22"
 
+# Repository abstraction
+async-trait = "0.1"
+dashmap = "6"
+
 # Utilities
 anyhow = "1"
 thiserror = "2"

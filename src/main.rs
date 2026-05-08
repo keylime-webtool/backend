@@ -1,33 +1,34 @@
 #![forbid(unsafe_code)]
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use keylime_webtool_backend::api::routes;
-use keylime_webtool_backend::config::{CacheConfig, KeylimeConfig};
+use keylime_webtool_backend::config::KeylimeConfig;
 use keylime_webtool_backend::keylime::client::KeylimeClient;
-use keylime_webtool_backend::models::alert_store::AlertStore;
+use keylime_webtool_backend::repository::{
+    AlertRepository, AttestationRepository, AuditRepository, CacheBackend,
+    FallbackAttestationRepository, InMemoryAlertRepository, InMemoryAuditRepository,
+    InMemoryCacheBackend, InMemoryPolicyRepository, PolicyRepository, RedisCacheBackend,
+};
 use keylime_webtool_backend::settings_store;
 use keylime_webtool_backend::state::AppState;
-use keylime_webtool_backend::storage::cache::Cache;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize structured logging with RUST_LOG env filter.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .json()
         .init();
 
-    // Resolve config file path and load any persisted settings.
     let config_path = settings_store::resolve_config_path();
     let persisted = config_path
         .as_ref()
         .and_then(|p| settings_store::load_persisted_settings(p));
 
-    // Load Keylime connection config: persisted file > env vars > compiled defaults.
     let verifier_url = persisted
         .as_ref()
         .and_then(|s| s.keylime.as_ref())
@@ -54,26 +55,37 @@ async fn main() -> anyhow::Result<()> {
 
     let keylime_client = KeylimeClient::new(keylime_config)?;
 
-    let alert_store = AlertStore::new_with_seed_data();
+    let alert_repo: Arc<dyn AlertRepository> =
+        Arc::new(InMemoryAlertRepository::new_with_seed_data());
 
-    let cache = match std::env::var("REDIS_URL") {
-        Ok(url) => {
-            let cache_config = CacheConfig::with_url(url);
-            match Cache::connect(&cache_config).await {
-                Ok(c) => {
-                    tracing::info!("Redis cache connected");
-                    Some(c)
-                }
-                Err(e) => {
-                    tracing::warn!("Redis unavailable, caching disabled: {e}");
-                    None
-                }
+    let cache: Arc<dyn CacheBackend> = match std::env::var("REDIS_URL") {
+        Ok(url) => match RedisCacheBackend::connect(&url).await {
+            Ok(c) => {
+                tracing::info!("Redis cache connected");
+                Arc::new(c)
             }
-        }
-        Err(_) => None,
+            Err(e) => {
+                tracing::warn!("Redis unavailable, using in-memory cache: {e}");
+                Arc::new(InMemoryCacheBackend::new())
+            }
+        },
+        Err(_) => Arc::new(InMemoryCacheBackend::new()),
     };
 
-    let state = AppState::new(keylime_client, alert_store, config_path, cache);
+    let attestation_repo: Arc<dyn AttestationRepository> =
+        Arc::new(FallbackAttestationRepository::new());
+    let policy_repo: Arc<dyn PolicyRepository> = Arc::new(InMemoryPolicyRepository::new());
+    let audit_repo: Arc<dyn AuditRepository> = Arc::new(InMemoryAuditRepository::new());
+
+    let state = AppState::new(
+        keylime_client,
+        alert_repo,
+        attestation_repo,
+        policy_repo,
+        audit_repo,
+        cache,
+        config_path,
+    );
 
     let app = routes::build_router(state);
 

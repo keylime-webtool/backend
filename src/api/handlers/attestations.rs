@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use axum::extract::{Path, Query, State};
 use axum::Json;
-use chrono::{DateTime, Duration, Timelike, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Duration, Utc};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::response::ApiResponse;
@@ -11,6 +11,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::agent::AgentState;
 use crate::models::attestation::{
     AttestationResult, CorrelatedIncident, PipelineResult, PipelineStage, StageStatus,
+    TimelineBucket,
 };
 use crate::models::kpi::AttestationSummary;
 use crate::state::AppState;
@@ -43,72 +44,6 @@ fn parse_range(params: &TimeRangeParams) -> (DateTime<Utc>, DateTime<Utc>) {
         .unwrap_or_else(|| Duration::days(30));
     let start = now - duration;
     (start, now)
-}
-
-/// Distribute `total` events across `n` buckets with deterministic variation.
-///
-/// Uses a simple hash-like pattern so the chart looks natural rather than
-/// flat. The output always sums exactly to `total`.
-fn distribute_with_variation(total: u64, n: u64) -> Vec<u64> {
-    if n == 0 {
-        return vec![];
-    }
-    if total == 0 {
-        return vec![0; n as usize];
-    }
-
-    // Generate raw weights with variation using a deterministic pattern.
-    // Combine a sine-like curve with a simple integer hash for jitter.
-    let mut raw: Vec<f64> = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        // Smooth wave component (period ~6-8 buckets)
-        let wave = 1.0 + 0.5 * ((i as f64) * 0.9).sin();
-        // Deterministic jitter from a simple integer hash
-        let hash = ((i.wrapping_mul(2654435761)) >> 16) % 100;
-        let jitter = 0.7 + (hash as f64) / 100.0 * 0.6; // range [0.7, 1.3]
-        raw.push(wave * jitter);
-    }
-
-    // Normalise so the weights sum to `total`.
-    let sum: f64 = raw.iter().sum();
-    let mut buckets: Vec<u64> = raw
-        .iter()
-        .map(|w| (w / sum * total as f64) as u64)
-        .collect();
-
-    // Correct rounding error: distribute the remainder one-by-one to the
-    // buckets with the largest fractional parts.
-    let assigned: u64 = buckets.iter().sum();
-    let mut remainder = total.saturating_sub(assigned);
-    if remainder > 0 {
-        // Sort bucket indices by descending fractional part
-        let mut fractionals: Vec<(usize, f64)> = raw
-            .iter()
-            .enumerate()
-            .map(|(i, w)| {
-                let exact = w / sum * total as f64;
-                (i, exact - exact.floor())
-            })
-            .collect();
-        fractionals.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for (idx, _) in fractionals {
-            if remainder == 0 {
-                break;
-            }
-            buckets[idx] += 1;
-            remainder -= 1;
-        }
-    }
-
-    buckets
-}
-
-/// A single hourly bucket in the attestation timeline.
-#[derive(Debug, Clone, Serialize)]
-pub struct TimelineBucket {
-    pub hour: DateTime<Utc>,
-    pub successful: u64,
-    pub failed: u64,
 }
 
 /// Baseline per-agent attestation stats derived from current agent state.
@@ -233,29 +168,10 @@ pub async fn get_timeline(
         }
     }
 
-    // Generate hourly buckets across the time range
-    let total_hours = (range_end - range_start).num_hours().max(1) as u64;
-
-    // Truncate start to the hour boundary
-    let start_hour = range_start
-        .date_naive()
-        .and_hms_opt(range_start.hour(), 0, 0)
-        .unwrap_or(range_start.naive_utc());
-    let start_hour = DateTime::<Utc>::from_naive_utc_and_offset(start_hour, Utc);
-
-    // Distribute events with natural-looking variation across buckets.
-    let success_weights = distribute_with_variation(total_successful, total_hours);
-    let fail_weights = distribute_with_variation(total_failed, total_hours);
-
-    let mut buckets = Vec::with_capacity(total_hours as usize);
-    for i in 0..total_hours {
-        let hour = start_hour + Duration::hours(i as i64);
-        buckets.push(TimelineBucket {
-            hour,
-            successful: success_weights[i as usize],
-            failed: fail_weights[i as usize],
-        });
-    }
+    let buckets = state
+        .attestation_repo
+        .query_timeline(range_start, range_end, total_successful, total_failed)
+        .await?;
 
     Ok(Json(ApiResponse::ok(buckets)))
 }

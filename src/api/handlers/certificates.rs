@@ -15,7 +15,6 @@ use crate::models::certificate::{
     CertificateType, ExpiryCategory, ExpiryTimelineEntry, ValidationStatus,
 };
 use crate::state::AppState;
-use crate::storage::cache::CacheNamespace;
 
 /// Derive a deterministic UUID from an agent UUID and a suffix.
 fn derive_cert_id(agent_uuid: &Uuid, suffix: &str) -> Uuid {
@@ -300,14 +299,12 @@ pub async fn list_certificates(
 pub async fn expiry_summary(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<CertificateExpirySummary>>> {
-    if let Some(cache) = state.cache() {
-        if let Ok(Some(cached)) = cache
-            .get(CacheNamespace::Certificates, "expiry_summary")
-            .await
-        {
-            if let Ok(summary) = serde_json::from_str::<CertificateExpirySummary>(&cached) {
-                return Ok(Json(ApiResponse::ok(summary)));
-            }
+    const CACHE_KEY: &str = "certs:expiry_summary";
+    let ttl = std::time::Duration::from_secs(300);
+
+    if let Some(cached) = state.cache.get(CACHE_KEY).await {
+        if let Ok(summary) = serde_json::from_slice::<CertificateExpirySummary>(&cached) {
+            return Ok(Json(ApiResponse::ok(summary)));
         }
     }
 
@@ -315,12 +312,8 @@ pub async fn expiry_summary(
     let now = Utc::now();
     let summary = compute_expiry_summary(&certs, now);
 
-    if let Some(cache) = state.cache() {
-        if let Ok(json) = serde_json::to_string(&summary) {
-            let _ = cache
-                .set(CacheNamespace::Certificates, "expiry_summary", &json)
-                .await;
-        }
+    if let Ok(json) = serde_json::to_vec(&summary) {
+        state.cache.set(CACHE_KEY, &json, ttl).await;
     }
 
     Ok(Json(ApiResponse::ok(summary)))

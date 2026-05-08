@@ -8,7 +8,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::alert::{Alert, AlertSummary};
 use crate::state::AppState;
 
-/// Query parameters for alert list filtering.
 #[derive(Debug, Deserialize)]
 pub struct AlertListParams {
     pub severity: Option<String>,
@@ -23,8 +22,9 @@ pub async fn list_alerts(
     Query(params): Query<AlertListParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<Alert>>>> {
     let alerts = state
-        .alert_store
-        .list(params.severity.as_deref(), params.state.as_deref());
+        .alert_repo
+        .list(params.severity.as_deref(), params.state.as_deref())
+        .await;
 
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(25).min(100);
@@ -50,7 +50,7 @@ pub async fn list_alerts(
 pub async fn get_summary(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<AlertSummary>>> {
-    let summary = state.alert_store.summary();
+    let summary = state.alert_repo.summary().await;
     Ok(Json(ApiResponse::ok(summary)))
 }
 
@@ -60,8 +60,9 @@ pub async fn get_alert(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<Alert>>> {
     let alert = state
-        .alert_store
+        .alert_repo
         .get(id)
+        .await
         .ok_or_else(|| AppError::NotFound(format!("alert {id} not found")))?;
     Ok(Json(ApiResponse::ok(alert)))
 }
@@ -72,8 +73,9 @@ pub async fn acknowledge_alert(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     state
-        .alert_store
+        .alert_repo
         .acknowledge(id)
+        .await
         .map_err(AppError::BadRequest)?;
     Ok(Json(ApiResponse::ok(())))
 }
@@ -90,8 +92,9 @@ pub async fn investigate_alert(
     Json(body): Json<InvestigateRequest>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     state
-        .alert_store
+        .alert_repo
         .investigate(id, body.assigned_to)
+        .await
         .map_err(AppError::BadRequest)?;
     Ok(Json(ApiResponse::ok(())))
 }
@@ -108,8 +111,9 @@ pub async fn resolve_alert(
     Json(body): Json<ResolveRequest>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     state
-        .alert_store
+        .alert_repo
         .resolve(id, body.resolution)
+        .await
         .map_err(AppError::BadRequest)?;
     Ok(Json(ApiResponse::ok(())))
 }
@@ -120,8 +124,9 @@ pub async fn dismiss_alert(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     state
-        .alert_store
+        .alert_repo
         .dismiss(id)
+        .await
         .map_err(AppError::BadRequest)?;
     Ok(Json(ApiResponse::ok(())))
 }
@@ -132,8 +137,9 @@ pub async fn escalate_alert(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     state
-        .alert_store
+        .alert_repo
         .escalate(id)
+        .await
         .map_err(AppError::BadRequest)?;
     Ok(Json(ApiResponse::ok(())))
 }
