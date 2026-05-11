@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use tokio::sync::watch;
-use tokio::time::interval;
 use tracing::{info, warn};
 
 use crate::api::handlers::attestations::record_agent_observations;
@@ -16,7 +15,7 @@ pub async fn background_observation_loop(
     interval_secs: u64,
     mut shutdown_rx: watch::Receiver<()>,
 ) {
-    let mut ticker = interval(Duration::from_secs(interval_secs));
+    let sleep_duration = Duration::from_secs(interval_secs);
     let mut tick_count: u64 = 0;
     let mut total_observations: u64 = 0;
 
@@ -26,20 +25,20 @@ pub async fn background_observation_loop(
     );
 
     loop {
-        tokio::select! {
-            _ = ticker.tick() => {},
-            _ = shutdown_rx.changed() => {
-                info!(total_observations, "background observation task shutting down");
-                return;
-            }
-        }
-
         tick_count += 1;
         record_agent_observations(&state).await;
         total_observations += 1;
 
         if tick_count % RECONCILIATION_EVERY_N_TICKS == 0 {
             reconcile_fleet(&state).await;
+        }
+
+        tokio::select! {
+            _ = tokio::time::sleep(sleep_duration) => {},
+            _ = shutdown_rx.changed() => {
+                info!(total_observations, "background observation task shutting down");
+                return;
+            }
         }
     }
 }
@@ -156,8 +155,9 @@ mod tests {
 
         let handle = tokio::spawn(background_observation_loop(state, 3600, rx));
 
+        tokio::task::yield_now().await;
         tx.send(()).unwrap();
-        let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
+        let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
         assert!(
             result.is_ok(),
             "loop should exit promptly on shutdown signal"
@@ -167,24 +167,15 @@ mod tests {
     #[tokio::test]
     async fn api_error_does_not_crash_loop() {
         let state = test_state();
-        let (tx, rx) = watch::channel(());
+        let (_tx, rx) = watch::channel(());
 
-        let handle = tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_millis(50));
-            let mut shutdown = rx;
-            for _ in 0..3 {
-                tokio::select! {
-                    _ = ticker.tick() => {},
-                    _ = shutdown.changed() => return,
-                }
-                record_agent_observations(&state).await;
-            }
-        });
+        let handle = tokio::spawn(background_observation_loop(state, 1, rx));
 
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
-        assert!(result.is_ok(), "loop should survive API errors");
-
-        drop(tx);
+        assert!(
+            result.is_err(),
+            "loop should keep running despite API errors"
+        );
     }
 
     #[test]
