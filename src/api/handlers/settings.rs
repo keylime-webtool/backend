@@ -48,6 +48,7 @@ pub async fn update_keylime(
         registrar_url: body.registrar_url.clone(),
         mtls: state.keylime().mtls_config().cloned(),
         timeout_secs: 30,
+        observation_interval_secs: 30,
         circuit_breaker: Default::default(),
     };
 
@@ -161,6 +162,7 @@ pub async fn update_certificates(
         registrar_url: kl.registrar_url().to_string(),
         mtls,
         timeout_secs: 30,
+        observation_interval_secs: 30,
         circuit_breaker: Default::default(),
     };
     drop(kl);

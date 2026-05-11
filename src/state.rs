@@ -102,6 +102,16 @@ impl AppState {
         }
     }
 
+    pub fn tracked_agent_ids(&self) -> Vec<String> {
+        let tracker = self.attestation_tracker.read().unwrap();
+        tracker.keys().cloned().collect()
+    }
+
+    pub fn tracked_success(&self, agent_id: &str) -> Option<bool> {
+        let tracker = self.attestation_tracker.read().unwrap();
+        tracker.get(agent_id).map(|s| s.success)
+    }
+
     pub fn mark_recorded(&self, agent_id: &str, success: bool) {
         let mut tracker = self.attestation_tracker.write().unwrap();
         tracker.insert(
@@ -127,6 +137,7 @@ mod tests {
             registrar_url: "http://localhost:3001".into(),
             mtls: None,
             timeout_secs: 5,
+            observation_interval_secs: 30,
             circuit_breaker: Default::default(),
         };
         let client = KeylimeClient::new(config).unwrap();

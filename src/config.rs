@@ -35,6 +35,8 @@ pub struct KeylimeConfig {
     pub mtls: Option<MtlsConfig>,
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
+    #[serde(default = "default_observation_interval_secs")]
+    pub observation_interval_secs: u64,
     #[serde(default)]
     pub circuit_breaker: CircuitBreakerConfig,
 }
@@ -216,6 +218,9 @@ fn default_retention_days() -> u32 {
 }
 fn default_hash_algorithm() -> String {
     "sha256".to_string()
+}
+fn default_observation_interval_secs() -> u64 {
+    30
 }
 fn default_ssh_port() -> u16 {
     22

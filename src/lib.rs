@@ -11,3 +11,4 @@ pub mod repository;
 pub mod settings_store;
 pub mod state;
 pub mod storage;
+pub mod tasks;
