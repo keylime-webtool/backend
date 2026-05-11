@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use tokio::time::Instant;
 
 use crate::config::SshConfig;
 use crate::keylime::client::KeylimeClient;
@@ -11,11 +12,11 @@ use crate::repository::{
 };
 use crate::settings_store::{self, PersistedKeylime, PersistedSettings};
 
-const DEDUP_INTERVAL_SECS: i64 = 30;
+const DEDUP_INTERVAL: Duration = Duration::from_secs(30);
 
 struct AttestationSnapshot {
     success: bool,
-    recorded_at: DateTime<Utc>,
+    recorded_at: Instant,
 }
 
 #[derive(Clone)]
@@ -94,10 +95,7 @@ impl AppState {
                 if snapshot.success != success {
                     return true;
                 }
-                let elapsed = Utc::now()
-                    .signed_duration_since(snapshot.recorded_at)
-                    .num_seconds();
-                elapsed >= DEDUP_INTERVAL_SECS
+                snapshot.recorded_at.elapsed() >= DEDUP_INTERVAL
             }
         }
     }
@@ -118,7 +116,7 @@ impl AppState {
             agent_id.to_string(),
             AttestationSnapshot {
                 success,
-                recorded_at: Utc::now(),
+                recorded_at: Instant::now(),
             },
         );
     }
@@ -182,7 +180,7 @@ mod tests {
                 "agent-1".to_string(),
                 AttestationSnapshot {
                     success: true,
-                    recorded_at: Utc::now() - chrono::Duration::seconds(DEDUP_INTERVAL_SECS + 1),
+                    recorded_at: Instant::now() - DEDUP_INTERVAL - Duration::from_secs(1),
                 },
             );
         }
