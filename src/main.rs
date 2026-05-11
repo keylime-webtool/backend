@@ -14,6 +14,7 @@ use keylime_webtool_backend::repository::{
 };
 use keylime_webtool_backend::settings_store;
 use keylime_webtool_backend::state::AppState;
+use keylime_webtool_backend::tasks::background_observation_loop;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,11 +44,17 @@ async fn main() -> anyhow::Result<()> {
 
     let mtls = persisted.and_then(|s| s.mtls);
 
+    let observation_interval_secs: u64 = std::env::var("OBSERVATION_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+
     let keylime_config = KeylimeConfig {
         verifier_url,
         registrar_url,
         mtls,
         timeout_secs: 30,
+        observation_interval_secs,
         circuit_breaker: Default::default(),
     };
 
@@ -94,13 +101,29 @@ async fn main() -> anyhow::Result<()> {
         config_path,
     );
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
+
+    tokio::spawn(background_observation_loop(
+        state.clone(),
+        observation_interval_secs,
+        shutdown_rx,
+    ));
+
     let app = routes::build_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     tracing::info!("listening on {addr}");
 
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to listen for ctrl-c");
+            tracing::info!("shutdown signal received");
+            drop(shutdown_tx);
+        })
+        .await?;
 
     Ok(())
 }
