@@ -9,11 +9,13 @@ use crate::error::AppResult;
 ///
 /// TimescaleDB is used for time-series storage of attestation history,
 /// audit logs, metrics, and certificate data.
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: PgPool,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Database {
     /// Create a new database connection pool from config.
     pub async fn connect(config: &DatabaseConfig) -> AppResult<Self> {

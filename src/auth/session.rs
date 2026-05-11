@@ -34,3 +34,45 @@ impl Default for SessionStore {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_session_is_not_revoked() {
+        let store = SessionStore::new();
+        assert!(!store.is_revoked("sess-1").await);
+    }
+
+    #[tokio::test]
+    async fn revoke_marks_session() {
+        let store = SessionStore::new();
+        store.revoke("sess-1").await;
+        assert!(store.is_revoked("sess-1").await);
+    }
+
+    #[tokio::test]
+    async fn other_sessions_unaffected() {
+        let store = SessionStore::new();
+        store.revoke("sess-1").await;
+        assert!(!store.is_revoked("sess-2").await);
+    }
+
+    #[tokio::test]
+    async fn multiple_revocations() {
+        let store = SessionStore::new();
+        store.revoke("a").await;
+        store.revoke("b").await;
+        assert!(store.is_revoked("a").await);
+        assert!(store.is_revoked("b").await);
+        assert!(!store.is_revoked("c").await);
+    }
+
+    #[test]
+    fn default_creates_empty_store() {
+        let store = SessionStore::default();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(!rt.block_on(store.is_revoked("any")));
+    }
+}

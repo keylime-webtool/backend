@@ -188,4 +188,119 @@ mod tests {
         let result = AuditLogger::verify_chain(&[e1, e2]);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn verify_empty_chain() {
+        assert!(AuditLogger::verify_chain(&[]).is_ok());
+    }
+
+    #[test]
+    fn verify_single_entry() {
+        let mut logger = AuditLogger::new(None, 1);
+        let e = logger.create_entry(AuditEntryParams {
+            severity: AuditSeverity::Info,
+            actor: "user",
+            action: "READ",
+            resource: "agents",
+            source_ip: "127.0.0.1",
+            user_agent: None,
+            result: "OK",
+        });
+        assert!(AuditLogger::verify_chain(&[e]).is_ok());
+    }
+
+    #[test]
+    fn custom_starting_hash() {
+        let custom = "abc123".repeat(10);
+        let mut logger = AuditLogger::new(Some(custom.clone()), 42);
+        let e = logger.create_entry(AuditEntryParams {
+            severity: AuditSeverity::Critical,
+            actor: "sys",
+            action: "STARTUP",
+            resource: "system",
+            source_ip: "0.0.0.0",
+            user_agent: None,
+            result: "OK",
+        });
+        assert_eq!(e.id, 42);
+        assert_eq!(e.previous_hash, custom);
+    }
+
+    #[test]
+    fn id_auto_increments() {
+        let mut logger = AuditLogger::new(None, 1);
+        let params = || AuditEntryParams {
+            severity: AuditSeverity::Info,
+            actor: "u",
+            action: "A",
+            resource: "R",
+            source_ip: "0",
+            user_agent: None,
+            result: "OK",
+        };
+        let e1 = logger.create_entry(params());
+        let e2 = logger.create_entry(params());
+        let e3 = logger.create_entry(params());
+        assert_eq!(e1.id, 1);
+        assert_eq!(e2.id, 2);
+        assert_eq!(e3.id, 3);
+    }
+
+    #[test]
+    fn broken_chain_detected() {
+        let mut logger = AuditLogger::new(None, 1);
+        let e1 = logger.create_entry(AuditEntryParams {
+            severity: AuditSeverity::Info,
+            actor: "u",
+            action: "A",
+            resource: "R",
+            source_ip: "0",
+            user_agent: None,
+            result: "OK",
+        });
+        let mut e2 = logger.create_entry(AuditEntryParams {
+            severity: AuditSeverity::Info,
+            actor: "u",
+            action: "B",
+            resource: "R",
+            source_ip: "0",
+            user_agent: None,
+            result: "OK",
+        });
+        e2.previous_hash = "wrong".to_string();
+        e2.entry_hash = e2.compute_hash();
+        let result = AuditLogger::verify_chain(&[e1, e2]);
+        assert!(matches!(
+            result,
+            Err(ChainVerificationError::BrokenChain(2))
+        ));
+    }
+
+    #[test]
+    fn severity_serde_roundtrip() {
+        for sev in [
+            AuditSeverity::Critical,
+            AuditSeverity::Warning,
+            AuditSeverity::Info,
+        ] {
+            let json = serde_json::to_string(&sev).unwrap();
+            let deserialized: AuditSeverity = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, sev);
+        }
+    }
+
+    #[test]
+    fn entry_hash_is_deterministic() {
+        let mut logger = AuditLogger::new(None, 1);
+        let e = logger.create_entry(AuditEntryParams {
+            severity: AuditSeverity::Info,
+            actor: "test",
+            action: "CHECK",
+            resource: "x",
+            source_ip: "1.2.3.4",
+            user_agent: Some("test-agent"),
+            result: "OK",
+        });
+        assert_eq!(e.entry_hash, e.compute_hash());
+    }
 }

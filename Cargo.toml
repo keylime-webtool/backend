@@ -84,6 +84,9 @@ ignored = [
     "url",
 ]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
 [features]
 mockoon = []
 

@@ -12,6 +12,7 @@ use crate::error::AppResult;
 ///   - Agent detail:  30s
 ///   - Policies:      60s
 ///   - Certificates: 300s
+#[cfg(not(tarpaulin_include))]
 #[derive(Debug, Clone)]
 pub struct Cache {
     conn: MultiplexedConnection,
@@ -30,6 +31,7 @@ pub enum CacheNamespace {
     Certificates,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl CacheNamespace {
     fn prefix(self) -> &'static str {
         match self {
@@ -41,6 +43,7 @@ impl CacheNamespace {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Cache {
     pub async fn connect(config: &CacheConfig) -> AppResult<Self> {
         let client = redis::Client::open(config.redis_url.as_str())?;

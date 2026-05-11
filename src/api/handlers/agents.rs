@@ -130,41 +130,16 @@ pub async fn list_agents(
         });
     }
 
-    // Apply filters
-    if let Some(ref state_filter) = params.state {
-        let filter_upper = state_filter.to_uppercase();
-        summaries.retain(|s| {
-            let state_str = serde_json::to_string(&s.state).unwrap_or_default();
-            let state_str = state_str.trim_matches('"');
-            state_str == filter_upper
-        });
-    }
-    if let Some(ref ip_filter) = params.ip {
-        summaries.retain(|s| s.ip.contains(ip_filter));
-    }
-    if let Some(ref uuid_filter) = params.uuid {
-        summaries.retain(|s| s.id.to_string().starts_with(uuid_filter));
-    }
+    filter_agent_summaries(
+        &mut summaries,
+        params.state.as_deref(),
+        params.ip.as_deref(),
+        params.uuid.as_deref(),
+    );
 
-    // Pagination
-    let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100);
-    let total_items = summaries.len() as u64;
-    let total_pages = (total_items + page_size - 1) / page_size.max(1);
-    let start = ((page - 1) * page_size) as usize;
-    let items: Vec<AgentSummary> = summaries
-        .into_iter()
-        .skip(start)
-        .take(page_size as usize)
-        .collect();
+    let paginated = paginate(summaries, params.page, params.page_size);
 
-    Ok(Json(ApiResponse::ok(PaginatedResponse {
-        items,
-        page,
-        page_size,
-        total_items,
-        total_pages,
-    })))
+    Ok(Json(ApiResponse::ok(paginated)))
 }
 
 /// GET /api/agents/:id -- Agent detail view (FR-018).
@@ -575,14 +550,53 @@ async fn fetch_policy_names_by_kind(state: &AppState) -> (Vec<String>, Vec<Strin
     (ima, mb)
 }
 
-/// Resolve policy names for an agent using Keylime flags as a fallback.
-///
-/// When the agent record includes explicit policy names (ima_policy /
-/// mb_policy), those are returned directly.  When only boolean flags are
-/// available (has_runtime_policy / has_mb_refstate — typical of real
-/// Keylime v2), the first known policy of that kind is used.  This is the
-/// same approximation as the policy handler's assigned_agents count.
-fn resolve_agent_policies(
+pub(crate) fn filter_agent_summaries(
+    summaries: &mut Vec<AgentSummary>,
+    state_filter: Option<&str>,
+    ip_filter: Option<&str>,
+    uuid_filter: Option<&str>,
+) {
+    if let Some(state_filter) = state_filter {
+        let filter_upper = state_filter.to_uppercase();
+        summaries.retain(|s| {
+            let state_str = serde_json::to_string(&s.state).unwrap_or_default();
+            let state_str = state_str.trim_matches('"');
+            state_str == filter_upper
+        });
+    }
+    if let Some(ip_filter) = ip_filter {
+        summaries.retain(|s| s.ip.contains(ip_filter));
+    }
+    if let Some(uuid_filter) = uuid_filter {
+        summaries.retain(|s| s.id.to_string().starts_with(uuid_filter));
+    }
+}
+
+pub(crate) fn paginate<T: serde::Serialize>(
+    items: Vec<T>,
+    page: Option<u64>,
+    page_size: Option<u64>,
+) -> PaginatedResponse<T> {
+    let page = page.unwrap_or(1).max(1);
+    let page_size = page_size.unwrap_or(20).min(100);
+    let total_items = items.len() as u64;
+    let total_pages = (total_items + page_size - 1) / page_size.max(1);
+    let start = ((page - 1) * page_size) as usize;
+    let paged: Vec<T> = items
+        .into_iter()
+        .skip(start)
+        .take(page_size as usize)
+        .collect();
+    PaginatedResponse {
+        items: paged,
+        page,
+        page_size,
+        total_items,
+        total_pages,
+    }
+}
+
+pub(crate) fn resolve_agent_policies(
     agent: &crate::keylime::models::VerifierAgent,
     ima_policies: &[String],
     mb_policies: &[String],
@@ -653,4 +667,197 @@ fn build_backend_summary(
     }
 
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keylime::models::VerifierAgent;
+
+    fn make_summary(id: &str, ip: &str, state: AgentState) -> AgentSummary {
+        AgentSummary {
+            id: Uuid::parse_str(id).unwrap(),
+            ip: ip.to_string(),
+            port: 9002,
+            state,
+            attestation_mode: AttestationMode::Pull,
+            last_attestation: None,
+            assigned_policy: None,
+            mb_policy: None,
+            failure_count: 0,
+        }
+    }
+
+    fn sample_summaries() -> Vec<AgentSummary> {
+        vec![
+            make_summary(
+                "d432fbb3-d2f1-4a97-9ef7-75bd81c00000",
+                "10.0.1.10",
+                AgentState::GetQuote,
+            ),
+            make_summary(
+                "a1b2c3d4-0000-1111-2222-333344445555",
+                "10.0.1.20",
+                AgentState::Failed,
+            ),
+            make_summary(
+                "b2c3d4e5-1111-2222-3333-444455556666",
+                "192.168.1.1",
+                AgentState::GetQuote,
+            ),
+        ]
+    }
+
+    // ── paginate ────────────────────────────────────────────────────────
+
+    #[test]
+    fn paginate_first_page() {
+        let items: Vec<u32> = (1..=10).collect();
+        let result = paginate(items, Some(1), Some(3));
+        assert_eq!(result.items, vec![1, 2, 3]);
+        assert_eq!(result.page, 1);
+        assert_eq!(result.page_size, 3);
+        assert_eq!(result.total_items, 10);
+        assert_eq!(result.total_pages, 4);
+    }
+
+    #[test]
+    fn paginate_last_partial_page() {
+        let items: Vec<u32> = (1..=10).collect();
+        let result = paginate(items, Some(4), Some(3));
+        assert_eq!(result.items, vec![10]);
+    }
+
+    #[test]
+    fn paginate_beyond_total() {
+        let items: Vec<u32> = (1..=5).collect();
+        let result = paginate(items, Some(100), Some(10));
+        assert!(result.items.is_empty());
+    }
+
+    #[test]
+    fn paginate_defaults() {
+        let items: Vec<u32> = (1..=25).collect();
+        let result = paginate(items, None, None);
+        assert_eq!(result.page, 1);
+        assert_eq!(result.page_size, 20);
+        assert_eq!(result.items.len(), 20);
+    }
+
+    #[test]
+    fn paginate_clamps_page_size() {
+        let items: Vec<u32> = (1..=5).collect();
+        let result = paginate(items, Some(1), Some(999));
+        assert_eq!(result.page_size, 100);
+    }
+
+    #[test]
+    fn paginate_clamps_page_zero() {
+        let items: Vec<u32> = (1..=5).collect();
+        let result = paginate(items, Some(0), Some(10));
+        assert_eq!(result.page, 1);
+        assert_eq!(result.items, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn paginate_empty() {
+        let items: Vec<u32> = vec![];
+        let result = paginate(items, Some(1), Some(10));
+        assert!(result.items.is_empty());
+        assert_eq!(result.total_items, 0);
+        assert_eq!(result.total_pages, 0);
+    }
+
+    // ── filter_agent_summaries ──────────────────────────────────────────
+
+    #[test]
+    fn filter_by_state() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, Some("GET_QUOTE"), None, None);
+        assert_eq!(summaries.len(), 2);
+        assert!(summaries.iter().all(|s| s.state == AgentState::GetQuote));
+    }
+
+    #[test]
+    fn filter_by_state_case_insensitive() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, Some("failed"), None, None);
+        assert_eq!(summaries.len(), 1);
+    }
+
+    #[test]
+    fn filter_by_ip() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, None, Some("10.0.1"), None);
+        assert_eq!(summaries.len(), 2);
+    }
+
+    #[test]
+    fn filter_by_uuid_prefix() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, None, None, Some("d432fbb3"));
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(
+            summaries[0].id.to_string(),
+            "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+        );
+    }
+
+    #[test]
+    fn filter_no_match() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, Some("NONEXISTENT"), None, None);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn filter_combined() {
+        let mut summaries = sample_summaries();
+        filter_agent_summaries(&mut summaries, Some("GET_QUOTE"), Some("10.0.1"), None);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].ip, "10.0.1.10");
+    }
+
+    // ── resolve_agent_policies ──────────────────────────────────────────
+
+    #[test]
+    fn resolve_explicit_ima_policy() {
+        let mut agent = serde_json::from_value::<VerifierAgent>(serde_json::json!({})).unwrap();
+        agent.ima_policy = Some("prod-v1".into());
+        let (ima, mb) = resolve_agent_policies(&agent, &[], &[]);
+        assert_eq!(ima.as_deref(), Some("prod-v1"));
+        assert!(mb.is_none());
+    }
+
+    #[test]
+    fn resolve_fallback_single_ima_policy() {
+        let mut agent = serde_json::from_value::<VerifierAgent>(serde_json::json!({})).unwrap();
+        agent.has_runtime_policy = Some(1);
+        let (ima, _) = resolve_agent_policies(&agent, &["default".into()], &[]);
+        assert_eq!(ima.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn resolve_no_fallback_multiple_ima_policies() {
+        let mut agent = serde_json::from_value::<VerifierAgent>(serde_json::json!({})).unwrap();
+        agent.has_runtime_policy = Some(1);
+        let (ima, _) = resolve_agent_policies(&agent, &["a".into(), "b".into()], &[]);
+        assert!(ima.is_none());
+    }
+
+    #[test]
+    fn resolve_explicit_mb_policy() {
+        let mut agent = serde_json::from_value::<VerifierAgent>(serde_json::json!({})).unwrap();
+        agent.mb_policy = Some("boot-v1".into());
+        let (_, mb) = resolve_agent_policies(&agent, &[], &[]);
+        assert_eq!(mb.as_deref(), Some("boot-v1"));
+    }
+
+    #[test]
+    fn resolve_no_policies() {
+        let agent = serde_json::from_value::<VerifierAgent>(serde_json::json!({})).unwrap();
+        let (ima, mb) = resolve_agent_policies(&agent, &[], &[]);
+        assert!(ima.is_none());
+        assert!(mb.is_none());
+    }
 }

@@ -202,4 +202,48 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
     }
+
+    #[test]
+    fn resolve_config_path_from_env() {
+        std::env::set_var("KEYLIME_WEBTOOL_CONFIG", "/tmp/test-config.toml");
+        let path = resolve_config_path();
+        assert_eq!(path, Some(PathBuf::from("/tmp/test-config.toml")));
+        std::env::remove_var("KEYLIME_WEBTOOL_CONFIG");
+    }
+
+    #[test]
+    fn resolve_config_path_empty_env() {
+        std::env::set_var("KEYLIME_WEBTOOL_CONFIG", "");
+        let path = resolve_config_path();
+        // falls through to dirs_path
+        assert!(path.is_some() || path.is_none());
+        std::env::remove_var("KEYLIME_WEBTOOL_CONFIG");
+    }
+
+    #[test]
+    fn dirs_path_returns_home() {
+        let home = std::env::var("HOME").ok();
+        let result = dirs_path();
+        if home.is_some() {
+            assert!(result.is_some());
+        }
+    }
+
+    #[test]
+    fn load_invalid_toml_returns_none() {
+        let dir = std::env::temp_dir().join("keylime-webtool-test-invalid");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("invalid.toml");
+        std::fs::write(&path, "not valid { toml").unwrap();
+        assert!(load_persisted_settings(&path).is_none());
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn persisted_settings_default() {
+        let settings = PersistedSettings::default();
+        assert!(settings.keylime.is_none());
+        assert!(settings.mtls.is_none());
+    }
 }

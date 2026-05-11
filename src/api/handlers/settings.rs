@@ -36,12 +36,8 @@ pub async fn update_keylime(
     State(state): State<AppState>,
     Json(body): Json<KeylimeSettings>,
 ) -> AppResult<Json<ApiResponse<KeylimeSettings>>> {
-    // Basic URL validation
-    if body.verifier_url.is_empty() || body.registrar_url.is_empty() {
-        return Err(AppError::BadRequest(
-            "verifier_url and registrar_url must not be empty".into(),
-        ));
-    }
+    validate_keylime_urls(&body.verifier_url, &body.registrar_url)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     let config = KeylimeConfig {
         verifier_url: body.verifier_url.clone(),
@@ -104,9 +100,11 @@ pub async fn update_certificates(
     State(state): State<AppState>,
     Json(body): Json<CertificateSettings>,
 ) -> AppResult<Json<ApiResponse<CertificateSettings>>> {
-    let has_cert = body.cert_path.as_ref().is_some_and(|s| !s.is_empty());
-    let has_key = body.key_path.as_ref().is_some_and(|s| !s.is_empty());
-    let has_ca = body.ca_cert_path.as_ref().is_some_and(|s| !s.is_empty());
+    let (has_cert, has_key, has_ca) = resolve_mtls_fields(
+        body.cert_path.as_deref(),
+        body.key_path.as_deref(),
+        body.ca_cert_path.as_deref(),
+    );
 
     let mtls = if has_cert || has_key || has_ca {
         // If any path is provided, all three are required
@@ -185,4 +183,96 @@ pub async fn update_certificates(
         },
     };
     Ok(Json(ApiResponse::ok(result)))
+}
+
+pub(crate) fn validate_keylime_urls(verifier: &str, registrar: &str) -> Result<(), &'static str> {
+    if verifier.is_empty() || registrar.is_empty() {
+        return Err("verifier_url and registrar_url must not be empty");
+    }
+    Ok(())
+}
+
+pub(crate) fn resolve_mtls_fields(
+    cert: Option<&str>,
+    key: Option<&str>,
+    ca: Option<&str>,
+) -> (bool, bool, bool) {
+    let has_cert = cert.is_some_and(|s| !s.is_empty());
+    let has_key = key.is_some_and(|s| !s.is_empty());
+    let has_ca = ca.is_some_and(|s| !s.is_empty());
+    (has_cert, has_key, has_ca)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_urls_ok() {
+        assert!(validate_keylime_urls("http://v:3000", "http://r:3001").is_ok());
+    }
+
+    #[test]
+    fn validate_urls_empty_verifier() {
+        assert!(validate_keylime_urls("", "http://r:3001").is_err());
+    }
+
+    #[test]
+    fn validate_urls_empty_registrar() {
+        assert!(validate_keylime_urls("http://v:3000", "").is_err());
+    }
+
+    #[test]
+    fn validate_urls_both_empty() {
+        assert!(validate_keylime_urls("", "").is_err());
+    }
+
+    #[test]
+    fn resolve_mtls_all_present() {
+        let (c, k, ca) = resolve_mtls_fields(Some("/cert"), Some("/key"), Some("/ca"));
+        assert!(c && k && ca);
+    }
+
+    #[test]
+    fn resolve_mtls_all_none() {
+        let (c, k, ca) = resolve_mtls_fields(None, None, None);
+        assert!(!c && !k && !ca);
+    }
+
+    #[test]
+    fn resolve_mtls_empty_strings() {
+        let (c, k, ca) = resolve_mtls_fields(Some(""), Some(""), Some(""));
+        assert!(!c && !k && !ca);
+    }
+
+    #[test]
+    fn resolve_mtls_partial() {
+        let (c, k, ca) = resolve_mtls_fields(Some("/cert"), None, Some("/ca"));
+        assert!(c && !k && ca);
+    }
+
+    #[test]
+    fn keylime_settings_serde_roundtrip() {
+        let settings = KeylimeSettings {
+            verifier_url: "http://v:3000".into(),
+            registrar_url: "http://r:3001".into(),
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: KeylimeSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.verifier_url, "http://v:3000");
+        assert_eq!(deserialized.registrar_url, "http://r:3001");
+    }
+
+    #[test]
+    fn certificate_settings_serde_roundtrip() {
+        let settings = CertificateSettings {
+            cert_path: Some("/tmp/cert.pem".into()),
+            key_path: Some("pkcs11://slot=0".into()),
+            ca_cert_path: None,
+        };
+        let json = serde_json::to_value(&settings).unwrap();
+        assert_eq!(json["cert_path"], "/tmp/cert.pem");
+        assert_eq!(json["key_path"], "pkcs11://slot=0");
+        assert!(json["ca_cert_path"].is_null());
+    }
 }

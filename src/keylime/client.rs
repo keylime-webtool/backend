@@ -648,4 +648,112 @@ mod tests {
         let result: PolicyListResults = serde_json::from_str(json).unwrap();
         assert!(result.policy_names.is_empty());
     }
+
+    // ── KeylimeClient ──────────────────────────────────────────────────
+
+    #[test]
+    fn client_new_without_mtls() {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        assert_eq!(client.verifier_url(), "http://localhost:3000");
+        assert_eq!(client.registrar_url(), "http://localhost:3001");
+        assert!(client.mtls_config().is_none());
+    }
+
+    #[test]
+    fn client_rejects_hsm_uri() {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: Some(MtlsConfig {
+                cert: "/tmp/cert.pem".into(),
+                key: "pkcs11://slot=0".into(),
+                ca_cert: "/tmp/ca.pem".into(),
+            }),
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let result = KeylimeClient::new(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn client_rejects_vault_uri() {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: Some(MtlsConfig {
+                cert: "/tmp/cert.pem".into(),
+                key: "vault://secret/key".into(),
+                ca_cert: "/tmp/ca.pem".into(),
+            }),
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let result = KeylimeClient::new(config);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn verifier_available_false_when_open() {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: crate::config::CircuitBreakerConfig {
+                failure_threshold: 1,
+                reset_timeout_secs: 3600,
+            },
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        assert!(client.verifier_available().await);
+        client.verifier_circuit.record_failure().await;
+        assert!(!client.verifier_available().await);
+    }
+
+    #[tokio::test]
+    async fn check_circuit_returns_error_when_open() {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: crate::config::CircuitBreakerConfig {
+                failure_threshold: 1,
+                reset_timeout_secs: 3600,
+            },
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        assert!(client.check_circuit().await.is_ok());
+        client.verifier_circuit.record_failure().await;
+        assert!(client.check_circuit().await.is_err());
+    }
+
+    #[test]
+    fn client_debug_format() {
+        let config = KeylimeConfig {
+            verifier_url: "http://v:3000".into(),
+            registrar_url: "http://r:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        let debug = format!("{client:?}");
+        assert!(debug.contains("http://v:3000"));
+        assert!(debug.contains("http://r:3001"));
+    }
 }

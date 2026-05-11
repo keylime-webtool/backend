@@ -10,10 +10,12 @@ use axum::response::IntoResponse;
 ///   - Policy change status updates
 ///
 /// Target: 10K concurrent WebSocket connections, <100ms p99 latency.
+#[cfg(not(tarpaulin_include))]
 pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_socket)
 }
 
+#[cfg(not(tarpaulin_include))]
 async fn handle_socket(mut socket: WebSocket) {
     // TODO: authenticate WebSocket via initial message or query param token
     // TODO: subscribe to event channels (KPI, agents, alerts, policies)

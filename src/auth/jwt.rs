@@ -58,3 +58,64 @@ pub fn decode_token(token: &str, secret: &[u8]) -> AppResult<Claims> {
     )?;
     Ok(data.claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SECRET: &[u8] = b"test-secret-key-32-bytes-long!!!";
+
+    #[test]
+    fn encode_decode_roundtrip() {
+        let token = encode_token("alice", Role::Operator, "sess-1", None, SECRET, 300).unwrap();
+        let claims = decode_token(&token, SECRET).unwrap();
+        assert_eq!(claims.sub, "alice");
+        assert_eq!(claims.role, Role::Operator);
+        assert_eq!(claims.session_id, "sess-1");
+        assert!(claims.tenant_id.is_none());
+    }
+
+    #[test]
+    fn preserves_tenant_id() {
+        let token = encode_token("bob", Role::Admin, "sess-2", Some("t-42"), SECRET, 300).unwrap();
+        let claims = decode_token(&token, SECRET).unwrap();
+        assert_eq!(claims.tenant_id.as_deref(), Some("t-42"));
+    }
+
+    #[test]
+    fn wrong_secret_rejected() {
+        let token = encode_token("alice", Role::Viewer, "sess-3", None, SECRET, 300).unwrap();
+        let result = decode_token(&token, b"wrong-secret-key-32-bytes-long!!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn expired_token_rejected() {
+        let now = Utc::now();
+        let claims = Claims {
+            sub: "alice".to_string(),
+            role: Role::Viewer,
+            iat: (now - Duration::seconds(3600)).timestamp(),
+            exp: (now - Duration::seconds(120)).timestamp(),
+            session_id: "sess-4".to_string(),
+            tenant_id: None,
+        };
+        let token = jsonwebtoken::encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(SECRET),
+        )
+        .unwrap();
+        let result = decode_token(&token, SECRET);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn role_preserved_for_all_variants() {
+        for role in [Role::Viewer, Role::Operator, Role::Admin] {
+            let token = encode_token("u", role, "s", None, SECRET, 300).unwrap();
+            let claims = decode_token(&token, SECRET).unwrap();
+            assert_eq!(claims.role, role);
+        }
+    }
+}

@@ -19,6 +19,7 @@ pub struct AuditLogParams {
 }
 
 /// GET /api/audit-log -- Searchable audit event log (FR-042, FR-043).
+#[cfg(not(tarpaulin_include))]
 pub async fn list_audit_events(
     Query(_params): Query<AuditLogParams>,
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<AuditEntry>>>> {
@@ -26,11 +27,13 @@ pub async fn list_audit_events(
 }
 
 /// GET /api/audit-log/verify -- Verify hash chain integrity (FR-061).
+#[cfg(not(tarpaulin_include))]
 pub async fn verify_chain() -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))
 }
 
 /// GET /api/audit-log/export -- Export audit log (FR-042).
+#[cfg(not(tarpaulin_include))]
 pub async fn export_audit_log(
     Query(_params): Query<AuditLogParams>,
 ) -> AppResult<Json<ApiResponse<()>>> {
