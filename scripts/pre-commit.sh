@@ -8,7 +8,7 @@
 #   - cargo-machete.yml (unused dependencies)
 #   - shellcheck.yml    (shell script linting)
 #   - curl-integration.yaml (end-to-end curl tests)
-#   - coverage.yml      (cargo-tarpaulin — via verify.sh only)
+#   - coverage.yml      (cargo-tarpaulin code coverage)
 #
 # Usage:
 #   bash scripts/pre-commit.sh          # run all checks
@@ -153,6 +153,25 @@ elif ! command -v jq >/dev/null 2>&1; then
     skip "curl integration" "jq not installed"
 else
     run_check_once "curl integration" bash tests/curl_integration_test.sh
+fi
+
+# ── 8. Code coverage (coverage.yml) ─────────────────────────────────
+header "Code coverage"
+if [ "$QUICK" -eq 1 ]; then
+    skip "cargo tarpaulin" "--quick mode"
+elif ! command -v cargo-tarpaulin >/dev/null 2>&1; then
+    skip "cargo tarpaulin" "cargo-tarpaulin not installed"
+else
+    if cargo tarpaulin -o Json -o Xml --output-dir coverage/ >/dev/null 2>&1; then
+        COV=$(jq '.coverage' coverage/tarpaulin-report.json 2>/dev/null \
+            | grep -oE "[0-9]{1,3}\.[0-9]{0,2}" || echo "?")
+        pass "cargo tarpaulin (line coverage: ${COV}%)"
+    else
+        fail "cargo tarpaulin"
+        cargo tarpaulin -o Json -o Xml --output-dir coverage/ 2>&1 || true
+        echo ""
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
