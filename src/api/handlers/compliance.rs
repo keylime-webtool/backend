@@ -48,8 +48,7 @@ pub async fn get_report(
     State(state): State<AppState>,
     Path(framework): Path<String>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
-    // Validate framework exists
-    if !FRAMEWORKS.iter().any(|(id, _)| *id == framework) {
+    if validate_framework(&framework).is_none() {
         return Err(AppError::NotFound(format!(
             "unknown framework: {framework}"
         )));
@@ -77,17 +76,9 @@ pub async fn get_report(
         }
     }
 
-    let compliance_pct = if total > 0 {
-        (compliant as f64 / total as f64) * 100.0
-    } else {
-        100.0
-    };
+    let compliance_pct = compute_compliance_pct(compliant, total);
 
-    let framework_name = FRAMEWORKS
-        .iter()
-        .find(|(id, _)| *id == framework)
-        .map(|(_, n)| *n)
-        .unwrap_or(&framework);
+    let framework_name = validate_framework(&framework).unwrap_or(&framework);
 
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "framework": framework,
@@ -104,6 +95,21 @@ pub async fn get_report(
     }))))
 }
 
+pub(crate) fn compute_compliance_pct(compliant: u64, total: u64) -> f64 {
+    if total > 0 {
+        (compliant as f64 / total as f64) * 100.0
+    } else {
+        100.0
+    }
+}
+
+pub(crate) fn validate_framework(id: &str) -> Option<&'static str> {
+    FRAMEWORKS
+        .iter()
+        .find(|(fid, _)| *fid == id)
+        .map(|(_, name)| *name)
+}
+
 /// Export parameters for compliance reports (FR-060).
 #[derive(Debug, Deserialize)]
 pub struct ExportParams {
@@ -118,4 +124,50 @@ pub async fn export_report(
     Query(_params): Query<ExportParams>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compliance_pct_empty_fleet() {
+        assert_eq!(compute_compliance_pct(0, 0), 100.0);
+    }
+
+    #[test]
+    fn compliance_pct_all_compliant() {
+        assert_eq!(compute_compliance_pct(10, 10), 100.0);
+    }
+
+    #[test]
+    fn compliance_pct_mixed() {
+        let pct = compute_compliance_pct(7, 10);
+        assert!((pct - 70.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn compliance_pct_none_compliant() {
+        assert_eq!(compute_compliance_pct(0, 5), 0.0);
+    }
+
+    #[test]
+    fn validate_known_framework() {
+        assert_eq!(
+            validate_framework("nist-sp-800-155"),
+            Some("NIST SP 800-155 (BIOS Integrity Measurement)")
+        );
+    }
+
+    #[test]
+    fn validate_unknown_framework() {
+        assert!(validate_framework("nonexistent").is_none());
+    }
+
+    #[test]
+    fn validate_all_frameworks() {
+        for (id, name) in FRAMEWORKS {
+            assert_eq!(validate_framework(id), Some(*name));
+        }
+    }
 }

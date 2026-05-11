@@ -80,8 +80,42 @@ pub async fn capacity_planning(
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "current_agents": agent_count,
         "max_recommended_agents": 1000,
-        "utilization_pct": (agent_count as f64 / 1000.0) * 100.0,
+        "utilization_pct": compute_utilization_pct(agent_count as u64, 1000),
         "websocket_connections": 0,
         "max_websocket_connections": 10000,
     }))))
+}
+
+pub(crate) fn compute_utilization_pct(active: u64, capacity: u64) -> f64 {
+    if capacity > 0 {
+        (active as f64 / capacity as f64) * 100.0
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utilization_zero_capacity() {
+        assert_eq!(compute_utilization_pct(10, 0), 0.0);
+    }
+
+    #[test]
+    fn utilization_full() {
+        assert_eq!(compute_utilization_pct(100, 100), 100.0);
+    }
+
+    #[test]
+    fn utilization_partial() {
+        let pct = compute_utilization_pct(250, 1000);
+        assert!((pct - 25.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn utilization_empty() {
+        assert_eq!(compute_utilization_pct(0, 1000), 0.0);
+    }
 }

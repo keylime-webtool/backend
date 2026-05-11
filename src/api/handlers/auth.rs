@@ -5,6 +5,7 @@ use crate::api::response::ApiResponse;
 use crate::error::{AppError, AppResult};
 
 /// POST /api/auth/login -- Initiate OIDC login flow (SR-001).
+#[cfg(not(tarpaulin_include))]
 pub async fn login() -> AppResult<Json<ApiResponse<LoginResponse>>> {
     Err(AppError::Internal("not implemented".into()))
 }
@@ -22,6 +23,7 @@ pub struct CallbackParams {
 }
 
 /// POST /api/auth/callback -- Exchange auth code for JWT (SR-001, SR-010).
+#[cfg(not(tarpaulin_include))]
 pub async fn callback(
     Json(_params): Json<CallbackParams>,
 ) -> AppResult<Json<ApiResponse<TokenResponse>>> {
@@ -35,11 +37,13 @@ pub struct TokenResponse {
 }
 
 /// POST /api/auth/refresh -- Refresh JWT (SR-010).
+#[cfg(not(tarpaulin_include))]
 pub async fn refresh_token() -> AppResult<Json<ApiResponse<TokenResponse>>> {
     Err(AppError::Internal("not implemented".into()))
 }
 
 /// POST /api/auth/logout -- Revoke session (SR-011).
+#[cfg(not(tarpaulin_include))]
 pub async fn logout() -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))
 }

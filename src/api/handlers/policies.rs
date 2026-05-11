@@ -74,7 +74,7 @@ pub async fn list_policies(
     Ok(Json(ApiResponse::ok(policies)))
 }
 
-fn count_assigned(
+pub(crate) fn count_assigned(
     agents: &[crate::keylime::models::VerifierAgent],
     name: &str,
     kind: PolicyKind,
@@ -264,4 +264,63 @@ pub async fn assignment_matrix(
     }
 
     Ok(Json(ApiResponse::ok(matrix)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keylime::models::VerifierAgent;
+
+    fn make_agent(ima: Option<&str>, mb: Option<&str>) -> VerifierAgent {
+        let mut agent: VerifierAgent = serde_json::from_value(serde_json::json!({})).unwrap();
+        if let Some(p) = ima {
+            agent.ima_policy = Some(p.to_string());
+        }
+        if let Some(p) = mb {
+            agent.mb_policy = Some(p.to_string());
+        }
+        agent
+    }
+
+    #[test]
+    fn count_assigned_empty_agents() {
+        let agents: Vec<VerifierAgent> = vec![];
+        assert_eq!(count_assigned(&agents, "test", PolicyKind::Ima), 0);
+    }
+
+    #[test]
+    fn count_assigned_ima_match() {
+        let agents = vec![
+            make_agent(Some("prod-v1"), None),
+            make_agent(Some("staging"), None),
+            make_agent(Some("prod-v1"), None),
+        ];
+        assert_eq!(count_assigned(&agents, "prod-v1", PolicyKind::Ima), 2);
+    }
+
+    #[test]
+    fn count_assigned_mb_match() {
+        let agents = vec![
+            make_agent(None, Some("boot-v1")),
+            make_agent(None, Some("boot-v2")),
+        ];
+        assert_eq!(
+            count_assigned(&agents, "boot-v1", PolicyKind::MeasuredBoot),
+            1
+        );
+    }
+
+    #[test]
+    fn count_assigned_fallback_flag() {
+        let mut agent: VerifierAgent = serde_json::from_value(serde_json::json!({})).unwrap();
+        agent.has_runtime_policy = Some(1);
+        let agents = vec![agent];
+        assert_eq!(count_assigned(&agents, "any-name", PolicyKind::Ima), 1);
+    }
+
+    #[test]
+    fn count_assigned_no_match() {
+        let agents = vec![make_agent(Some("other"), None)];
+        assert_eq!(count_assigned(&agents, "prod-v1", PolicyKind::Ima), 0);
+    }
 }

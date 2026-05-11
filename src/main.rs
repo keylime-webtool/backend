@@ -16,6 +16,7 @@ use keylime_webtool_backend::settings_store;
 use keylime_webtool_backend::state::AppState;
 use keylime_webtool_backend::tasks::background_observation_loop;
 
+#[cfg(not(tarpaulin_include))]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()

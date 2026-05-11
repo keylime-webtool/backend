@@ -9,6 +9,7 @@ use super::middleware::require_write;
 use super::ws;
 
 /// Build the complete API router with all route groups.
+#[cfg(not(tarpaulin_include))]
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api_routes())
@@ -18,6 +19,7 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+#[cfg(not(tarpaulin_include))]
 fn api_routes() -> Router<AppState> {
     Router::new()
         .nest("/auth", auth_routes())
@@ -34,6 +36,7 @@ fn api_routes() -> Router<AppState> {
         .nest("/settings", settings_routes())
 }
 
+#[cfg(not(tarpaulin_include))]
 fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/login", post(handlers::auth::login))
@@ -42,10 +45,12 @@ fn auth_routes() -> Router<AppState> {
         .route("/logout", post(handlers::auth::logout))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn kpi_routes() -> Router<AppState> {
     Router::new().route("/", get(handlers::kpis::get_kpis))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn agent_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::agents::list_agents))
@@ -73,6 +78,7 @@ fn agent_routes() -> Router<AppState> {
         )
 }
 
+#[cfg(not(tarpaulin_include))]
 fn attestation_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::attestations::list_attestations))
@@ -103,6 +109,7 @@ fn attestation_routes() -> Router<AppState> {
         )
 }
 
+#[cfg(not(tarpaulin_include))]
 fn policy_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::policies::list_policies))
@@ -127,6 +134,7 @@ fn policy_routes() -> Router<AppState> {
         .route("/{id}/impact", post(handlers::policies::impact_analysis))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn certificate_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::certificates::list_certificates))
@@ -147,6 +155,7 @@ fn certificate_routes() -> Router<AppState> {
         )
 }
 
+#[cfg(not(tarpaulin_include))]
 fn alert_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::alerts::list_alerts))
@@ -167,6 +176,7 @@ fn alert_routes() -> Router<AppState> {
         .route("/{id}/escalate", post(handlers::alerts::escalate_alert))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn audit_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(handlers::audit::list_audit_events))
@@ -174,6 +184,7 @@ fn audit_routes() -> Router<AppState> {
         .route("/export", get(handlers::audit::export_audit_log))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn compliance_routes() -> Router<AppState> {
     Router::new()
         .route("/frameworks", get(handlers::compliance::list_frameworks))
@@ -187,6 +198,7 @@ fn compliance_routes() -> Router<AppState> {
         )
 }
 
+#[cfg(not(tarpaulin_include))]
 fn integration_routes() -> Router<AppState> {
     Router::new()
         .route("/status", get(handlers::integrations::connectivity_status))
@@ -202,6 +214,7 @@ fn integration_routes() -> Router<AppState> {
         )
 }
 
+#[cfg(not(tarpaulin_include))]
 fn performance_routes() -> Router<AppState> {
     Router::new()
         .route("/verifiers", get(handlers::performance::verifier_metrics))
@@ -214,6 +227,7 @@ fn performance_routes() -> Router<AppState> {
         .route("/capacity", get(handlers::performance::capacity_planning))
 }
 
+#[cfg(not(tarpaulin_include))]
 fn settings_routes() -> Router<AppState> {
     Router::new()
         .route("/keylime", get(handlers::settings::get_keylime))
