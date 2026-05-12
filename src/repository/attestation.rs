@@ -19,6 +19,7 @@ pub trait AttestationRepository: Send + Sync + 'static {
         end: DateTime<Utc>,
         total_successful: u64,
         total_failed: u64,
+        total_timed_out: u64,
     ) -> AppResult<Vec<TimelineBucket>>;
     async fn get_pipeline(&self, agent_id: Uuid) -> AppResult<Vec<PipelineResult>>;
     async fn list_failures(
@@ -28,8 +29,11 @@ pub trait AttestationRepository: Send + Sync + 'static {
     ) -> AppResult<Vec<AttestationResult>>;
     async fn correlate_incidents(&self) -> AppResult<Vec<CorrelatedIncident>>;
     async fn get_incident(&self, id: Uuid) -> AppResult<Option<CorrelatedIncident>>;
-    async fn query_counts(&self, start: DateTime<Utc>, end: DateTime<Utc>)
-        -> AppResult<(u64, u64)>;
+    async fn query_counts(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> AppResult<(u64, u64, u64)>;
     async fn count_agent_failures(
         &self,
         agent_id: Uuid,
@@ -131,7 +135,10 @@ impl AttestationRepository for FallbackAttestationRepository {
         end: DateTime<Utc>,
         total_successful: u64,
         total_failed: u64,
+        total_timed_out: u64,
     ) -> AppResult<Vec<TimelineBucket>> {
+        use crate::models::attestation::FailureType;
+
         let results = self.results.read().unwrap();
         let in_range_results: Vec<&AttestationResult> = results
             .iter()
@@ -139,7 +146,7 @@ impl AttestationRepository for FallbackAttestationRepository {
             .collect();
 
         if !in_range_results.is_empty() {
-            let mut hourly: HashMap<DateTime<Utc>, (u64, u64)> = HashMap::new();
+            let mut hourly: HashMap<DateTime<Utc>, (u64, u64, u64)> = HashMap::new();
             for r in &in_range_results {
                 let hour = r
                     .timestamp
@@ -147,19 +154,22 @@ impl AttestationRepository for FallbackAttestationRepository {
                     .and_hms_opt(r.timestamp.hour(), 0, 0)
                     .map(|naive| DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
                     .unwrap_or(r.timestamp);
-                let entry = hourly.entry(hour).or_insert((0, 0));
+                let entry = hourly.entry(hour).or_insert((0, 0, 0));
                 if r.success {
                     entry.0 += 1;
+                } else if r.failure_type == Some(FailureType::Timeout) {
+                    entry.2 += 1;
                 } else {
                     entry.1 += 1;
                 }
             }
             let mut buckets: Vec<TimelineBucket> = hourly
                 .into_iter()
-                .map(|(hour, (successful, failed))| TimelineBucket {
+                .map(|(hour, (successful, failed, timed_out))| TimelineBucket {
                     hour,
                     successful,
                     failed,
+                    timed_out,
                 })
                 .collect();
             buckets.sort_by_key(|b| b.hour);
@@ -176,6 +186,7 @@ impl AttestationRepository for FallbackAttestationRepository {
 
         let success_weights = distribute_with_variation(total_successful, total_hours);
         let fail_weights = distribute_with_variation(total_failed, total_hours);
+        let timeout_weights = distribute_with_variation(total_timed_out, total_hours);
 
         let mut buckets = Vec::with_capacity(total_hours as usize);
         for i in 0..total_hours {
@@ -184,6 +195,7 @@ impl AttestationRepository for FallbackAttestationRepository {
                 hour,
                 successful: success_weights[i as usize],
                 failed: fail_weights[i as usize],
+                timed_out: timeout_weights[i as usize],
             });
         }
 
@@ -219,20 +231,25 @@ impl AttestationRepository for FallbackAttestationRepository {
         &self,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
-    ) -> AppResult<(u64, u64)> {
+    ) -> AppResult<(u64, u64, u64)> {
+        use crate::models::attestation::FailureType;
+
         let results = self.results.read().unwrap();
         let mut successful = 0u64;
         let mut failed = 0u64;
+        let mut timed_out = 0u64;
         for r in results.iter() {
             if in_range(&r.timestamp, &start, &end) {
                 if r.success {
                     successful += 1;
+                } else if r.failure_type == Some(FailureType::Timeout) {
+                    timed_out += 1;
                 } else {
                     failed += 1;
                 }
             }
         }
-        Ok((successful, failed))
+        Ok((successful, failed, timed_out))
     }
 
     async fn count_agent_failures(
@@ -304,13 +321,15 @@ mod tests {
         let end = Utc::now();
         let start = end - Duration::hours(24);
 
-        let buckets = repo.query_timeline(start, end, 100, 10).await.unwrap();
+        let buckets = repo.query_timeline(start, end, 100, 10, 4).await.unwrap();
         assert_eq!(buckets.len(), 24);
 
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
         let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
         assert_eq!(total_success, 100);
         assert_eq!(total_failed, 10);
+        assert_eq!(total_timed_out, 4);
     }
 
     #[tokio::test]
@@ -326,9 +345,10 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
-        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
         assert_eq!(successful, 5);
         assert_eq!(failed, 3);
+        assert_eq!(timed_out, 0);
     }
 
     #[tokio::test]
@@ -359,7 +379,7 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
-        let buckets = repo.query_timeline(start, end, 0, 0).await.unwrap();
+        let buckets = repo.query_timeline(start, end, 0, 0, 0).await.unwrap();
 
         assert!(!buckets.is_empty());
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
@@ -374,10 +394,12 @@ mod tests {
         let end = Utc::now();
         let start = end - Duration::hours(24);
 
-        let buckets = repo.query_timeline(start, end, 50, 5).await.unwrap();
+        let buckets = repo.query_timeline(start, end, 50, 5, 2).await.unwrap();
         assert_eq!(buckets.len(), 24);
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
         assert_eq!(total_success, 50);
+        assert_eq!(total_timed_out, 2);
     }
 
     #[tokio::test]
@@ -420,5 +442,66 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    fn make_timeout_result() -> AttestationResult {
+        AttestationResult {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            success: false,
+            failure_type: Some(FailureType::Timeout),
+            failure_reason: Some("timeout".into()),
+            latency_ms: 45,
+            verifier_id: "verifier-1".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_query_counts_separates_timeout_from_fail() {
+        let repo = FallbackAttestationRepository::new();
+
+        for _ in 0..5 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&make_timeout_result()).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 5);
+        assert_eq!(failed, 3);
+        assert_eq!(timed_out, 2);
+    }
+
+    #[tokio::test]
+    async fn fallback_timeline_separates_timeout_from_fail_in_stored_data() {
+        let repo = FallbackAttestationRepository::new();
+
+        for _ in 0..4 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_timeout_result()).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let buckets = repo.query_timeline(start, end, 0, 0, 0).await.unwrap();
+
+        let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
+        assert_eq!(total_success, 4);
+        assert_eq!(total_failed, 2);
+        assert_eq!(total_timed_out, 3);
     }
 }

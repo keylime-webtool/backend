@@ -106,6 +106,7 @@ pub struct TimelineBucket {
     pub hour: DateTime<Utc>,
     pub successful: u64,
     pub failed: u64,
+    pub timed_out: u64,
 }
 
 #[cfg(test)]
