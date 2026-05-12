@@ -156,15 +156,16 @@ pub async fn get_summary(
 
     let (keylime_successful, keylime_consecutive) = sum_keylime_attestation_counts(&state).await;
 
-    let (_, repo_failed) = state
+    let (_, repo_failed, repo_timed_out) = state
         .attestation_repo
         .query_counts(range_start, range_end)
         .await?;
 
     let total_successful = keylime_successful;
     let total_failed = repo_failed.max(keylime_consecutive);
+    let total_timed_out = repo_timed_out;
 
-    let total = total_successful + total_failed;
+    let total = total_successful + total_failed + total_timed_out;
     let success_rate = if total > 0 {
         (total_successful as f64 / total as f64) * 100.0
     } else {
@@ -174,6 +175,7 @@ pub async fn get_summary(
     Ok(Json(ApiResponse::ok(AttestationSummary {
         total_successful,
         total_failed,
+        total_timed_out,
         average_latency_ms: 0.0,
         success_rate,
     })))
@@ -190,17 +192,24 @@ pub async fn get_timeline(
 
     let (keylime_successful, keylime_consecutive) = sum_keylime_attestation_counts(&state).await;
 
-    let (_, repo_failed) = state
+    let (_, repo_failed, repo_timed_out) = state
         .attestation_repo
         .query_counts(range_start, range_end)
         .await?;
 
     let fallback_successful = keylime_successful;
     let fallback_failed = repo_failed.max(keylime_consecutive);
+    let fallback_timed_out = repo_timed_out;
 
     let buckets = state
         .attestation_repo
-        .query_timeline(range_start, range_end, fallback_successful, fallback_failed)
+        .query_timeline(
+            range_start,
+            range_end,
+            fallback_successful,
+            fallback_failed,
+            fallback_timed_out,
+        )
         .await?;
 
     Ok(Json(ApiResponse::ok(buckets)))
@@ -646,5 +655,100 @@ mod tests {
             failure_count, 3,
             "when repo has no data (e.g. fresh restart), keylime consecutive should be used"
         );
+    }
+
+    fn push_fail_agent() -> VerifierAgent {
+        VerifierAgent {
+            agent_id: "b1b2c3d4-0000-1111-2222-333344445555".into(),
+            attestation_status: Some("FAIL".into()),
+            accept_attestations: Some(false),
+            attestation_count: Some(50),
+            consecutive_attestation_failures: Some(3),
+            ..default_verifier()
+        }
+    }
+
+    #[test]
+    fn fail_agent_produces_non_timeout_failure() {
+        let agent = push_fail_agent();
+        let state = AgentState::from_push_agent(&agent);
+        assert_eq!(state, AgentState::Fail);
+        assert!(state.is_failed());
+        assert!(!state.is_timeout());
+
+        let result = build_attestation_result(&agent, state).unwrap();
+        assert!(!result.success);
+        assert_ne!(result.failure_type, Some(FailureType::Timeout));
+    }
+
+    #[test]
+    fn timeout_state_is_timeout_but_also_failed() {
+        let state = AgentState::Timeout;
+        assert!(state.is_failed());
+        assert!(state.is_timeout());
+    }
+
+    #[test]
+    fn fail_state_is_failed_but_not_timeout() {
+        let state = AgentState::Fail;
+        assert!(state.is_failed());
+        assert!(!state.is_timeout());
+    }
+
+    #[tokio::test]
+    async fn three_way_split_counts_pass_fail_timeout_separately() {
+        let repo = FallbackAttestationRepository::new();
+
+        let pass = build_attestation_result(&push_pass_agent(), AgentState::Pass).unwrap();
+        let fail = build_attestation_result(&push_fail_agent(), AgentState::Fail).unwrap();
+        let timeout = build_attestation_result(&push_timeout_agent(), AgentState::Timeout).unwrap();
+
+        assert!(pass.success);
+        assert!(!fail.success);
+        assert_ne!(fail.failure_type, Some(FailureType::Timeout));
+        assert!(!timeout.success);
+        assert_eq!(timeout.failure_type, Some(FailureType::Timeout));
+
+        for _ in 0..10 {
+            repo.store_result(&pass).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&fail).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&timeout).await.unwrap();
+        }
+
+        let start = Utc::now() - chrono::Duration::hours(1);
+        let end = Utc::now() + chrono::Duration::hours(1);
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 10);
+        assert_eq!(failed, 3);
+        assert_eq!(timed_out, 2);
+
+        let total = successful + failed + timed_out;
+        let success_rate = (successful as f64 / total as f64) * 100.0;
+        let expected_rate = (10.0 / 15.0) * 100.0;
+        assert!(
+            (success_rate - expected_rate).abs() < 0.01,
+            "success_rate should be ~66.67%, got {success_rate}"
+        );
+    }
+
+    #[tokio::test]
+    async fn three_way_timeline_distributes_timeout_separately() {
+        let repo = FallbackAttestationRepository::new();
+        let end = Utc::now();
+        let start = end - chrono::Duration::hours(6);
+
+        let buckets = repo.query_timeline(start, end, 100, 10, 5).await.unwrap();
+        assert_eq!(buckets.len(), 6);
+
+        let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
+        assert_eq!(total_success, 100);
+        assert_eq!(total_failed, 10);
+        assert_eq!(total_timed_out, 5);
     }
 }

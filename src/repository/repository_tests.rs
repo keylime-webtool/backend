@@ -346,7 +346,7 @@ mod tests {
         let start = end - Duration::hours(24);
 
         let buckets = attestation
-            .query_timeline(start, end, 100, 10)
+            .query_timeline(start, end, 100, 10, 4)
             .await
             .unwrap();
 
@@ -354,6 +354,7 @@ mod tests {
 
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
         let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
         assert_eq!(
             total_success, 100,
             "[{label}] successful count must sum to requested total"
@@ -361,6 +362,10 @@ mod tests {
         assert_eq!(
             total_failed, 10,
             "[{label}] failed count must sum to requested total"
+        );
+        assert_eq!(
+            total_timed_out, 4,
+            "[{label}] timed_out count must sum to requested total"
         );
     }
 
@@ -789,9 +794,10 @@ mod tests {
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
 
-        let (s, f) = attestation.query_counts(start, end).await.unwrap();
+        let (s, f, t) = attestation.query_counts(start, end).await.unwrap();
         assert_eq!(s, 0, "[{label}] empty repo should have 0 successful");
         assert_eq!(f, 0, "[{label}] empty repo should have 0 failed");
+        assert_eq!(t, 0, "[{label}] empty repo should have 0 timed_out");
 
         for _ in 0..5 {
             attestation
@@ -806,18 +812,20 @@ mod tests {
                 .unwrap();
         }
 
-        let (s, f) = attestation.query_counts(start, end).await.unwrap();
+        let (s, f, t) = attestation.query_counts(start, end).await.unwrap();
         assert_eq!(s, 5, "[{label}] should count 5 successful");
         assert_eq!(f, 3, "[{label}] should count 3 failed");
+        assert_eq!(t, 0, "[{label}] should count 0 timed_out");
 
         let future_start = Utc::now() + Duration::hours(10);
         let future_end = Utc::now() + Duration::hours(11);
-        let (s, f) = attestation
+        let (s, f, t) = attestation
             .query_counts(future_start, future_end)
             .await
             .unwrap();
         assert_eq!(s, 0, "[{label}] out-of-range should return 0 successful");
         assert_eq!(f, 0, "[{label}] out-of-range should return 0 failed");
+        assert_eq!(t, 0, "[{label}] out-of-range should return 0 timed_out");
     }
 
     #[tokio::test]

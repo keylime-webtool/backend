@@ -18,6 +18,7 @@ pub struct FleetKpis {
 pub struct AttestationSummary {
     pub total_successful: u64,
     pub total_failed: u64,
+    pub total_timed_out: u64,
     pub average_latency_ms: f64,
     pub success_rate: f64,
 }
@@ -73,12 +74,14 @@ mod tests {
         let summary = AttestationSummary {
             total_successful: 1000,
             total_failed: 5,
+            total_timed_out: 3,
             average_latency_ms: 42.0,
             success_rate: 99.5,
         };
         let json = serde_json::to_value(&summary).unwrap();
         assert_eq!(json["total_successful"], 1000);
         assert_eq!(json["total_failed"], 5);
+        assert_eq!(json["total_timed_out"], 3);
         assert_eq!(json["success_rate"], 99.5);
     }
 

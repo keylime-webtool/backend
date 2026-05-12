@@ -95,11 +95,15 @@ impl AttestationRepository for SqliteAttestationRepository {
         end: DateTime<Utc>,
         total_successful: u64,
         total_failed: u64,
+        total_timed_out: u64,
     ) -> AppResult<Vec<TimelineBucket>> {
         let rows = sqlx::query(
             "SELECT strftime('%Y-%m-%dT%H:00:00+00:00', timestamp) AS hour, \
              SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful, \
-             SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed \
+             SUM(CASE WHEN success = 0 AND (failure_type IS NULL OR failure_type != 'TIMEOUT') \
+                 THEN 1 ELSE 0 END) AS failed, \
+             SUM(CASE WHEN success = 0 AND failure_type = 'TIMEOUT' \
+                 THEN 1 ELSE 0 END) AS timed_out \
              FROM attestation_results \
              WHERE timestamp >= ? AND timestamp <= ? \
              GROUP BY strftime('%Y-%m-%dT%H:00:00+00:00', timestamp) \
@@ -113,7 +117,7 @@ impl AttestationRepository for SqliteAttestationRepository {
         if rows.is_empty() {
             let fallback = crate::repository::FallbackAttestationRepository::new();
             return fallback
-                .query_timeline(start, end, total_successful, total_failed)
+                .query_timeline(start, end, total_successful, total_failed, total_timed_out)
                 .await;
         }
 
@@ -127,6 +131,7 @@ impl AttestationRepository for SqliteAttestationRepository {
                         .expect("valid hour timestamp"),
                     successful: row.get::<i64, _>("successful") as u64,
                     failed: row.get::<i64, _>("failed") as u64,
+                    timed_out: row.get::<i64, _>("timed_out") as u64,
                 }
             })
             .collect())
@@ -174,11 +179,14 @@ impl AttestationRepository for SqliteAttestationRepository {
         &self,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
-    ) -> AppResult<(u64, u64)> {
+    ) -> AppResult<(u64, u64, u64)> {
         let row = sqlx::query(
             "SELECT \
              SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful, \
-             SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed \
+             SUM(CASE WHEN success = 0 AND (failure_type IS NULL OR failure_type != 'TIMEOUT') \
+                 THEN 1 ELSE 0 END) AS failed, \
+             SUM(CASE WHEN success = 0 AND failure_type = 'TIMEOUT' \
+                 THEN 1 ELSE 0 END) AS timed_out \
              FROM attestation_results \
              WHERE timestamp >= ? AND timestamp <= ?",
         )
@@ -189,7 +197,8 @@ impl AttestationRepository for SqliteAttestationRepository {
 
         let successful = row.get::<Option<i64>, _>("successful").unwrap_or(0) as u64;
         let failed = row.get::<Option<i64>, _>("failed").unwrap_or(0) as u64;
-        Ok((successful, failed))
+        let timed_out = row.get::<Option<i64>, _>("timed_out").unwrap_or(0) as u64;
+        Ok((successful, failed, timed_out))
     }
 
     async fn count_agent_failures(
@@ -270,7 +279,7 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
-        let buckets = repo.query_timeline(start, end, 0, 0).await.unwrap();
+        let buckets = repo.query_timeline(start, end, 0, 0, 0).await.unwrap();
 
         assert!(!buckets.is_empty());
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
@@ -286,7 +295,7 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(24);
         let end = Utc::now();
-        let buckets = repo.query_timeline(start, end, 100, 10).await.unwrap();
+        let buckets = repo.query_timeline(start, end, 100, 10, 0).await.unwrap();
 
         assert_eq!(buckets.len(), 24);
         let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
@@ -390,9 +399,10 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
-        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
         assert_eq!(successful, 5);
         assert_eq!(failed, 3);
+        assert_eq!(timed_out, 0);
     }
 
     #[tokio::test]
@@ -402,9 +412,10 @@ mod tests {
 
         let start = Utc::now() - Duration::hours(1);
         let end = Utc::now() + Duration::hours(1);
-        let (successful, failed) = repo.query_counts(start, end).await.unwrap();
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
         assert_eq!(successful, 0);
         assert_eq!(failed, 0);
+        assert_eq!(timed_out, 0);
     }
 
     #[tokio::test]
@@ -457,5 +468,68 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    fn make_timeout_result() -> AttestationResult {
+        AttestationResult {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            success: false,
+            failure_type: Some(FailureType::Timeout),
+            failure_reason: Some("timeout".into()),
+            latency_ms: 45,
+            verifier_id: "verifier-1".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn sqlite_query_counts_separates_timeout_from_fail() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+
+        for _ in 0..5 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&make_timeout_result()).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let (successful, failed, timed_out) = repo.query_counts(start, end).await.unwrap();
+        assert_eq!(successful, 5);
+        assert_eq!(failed, 3);
+        assert_eq!(timed_out, 2);
+    }
+
+    #[tokio::test]
+    async fn sqlite_timeline_separates_timeout_from_fail() {
+        let db = test_db().await;
+        let repo = db.attestation_repo();
+
+        for _ in 0..4 {
+            repo.store_result(&make_result(true)).await.unwrap();
+        }
+        for _ in 0..2 {
+            repo.store_result(&make_result(false)).await.unwrap();
+        }
+        for _ in 0..3 {
+            repo.store_result(&make_timeout_result()).await.unwrap();
+        }
+
+        let start = Utc::now() - Duration::hours(1);
+        let end = Utc::now() + Duration::hours(1);
+        let buckets = repo.query_timeline(start, end, 0, 0, 0).await.unwrap();
+
+        let total_success: u64 = buckets.iter().map(|b| b.successful).sum();
+        let total_failed: u64 = buckets.iter().map(|b| b.failed).sum();
+        let total_timed_out: u64 = buckets.iter().map(|b| b.timed_out).sum();
+        assert_eq!(total_success, 4);
+        assert_eq!(total_failed, 2);
+        assert_eq!(total_timed_out, 3);
     }
 }

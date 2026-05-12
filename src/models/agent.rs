@@ -38,6 +38,10 @@ impl AgentState {
                 | AgentState::Timeout
         )
     }
+
+    pub fn is_timeout(self) -> bool {
+        matches!(self, AgentState::Timeout)
+    }
 }
 
 impl TryFrom<i32> for AgentState {
