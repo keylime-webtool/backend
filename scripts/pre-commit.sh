@@ -11,8 +11,9 @@
 #   - coverage.yml      (cargo-tarpaulin code coverage)
 #
 # Usage:
-#   bash scripts/pre-commit.sh          # run all checks
-#   bash scripts/pre-commit.sh --quick  # skip slow checks (audit, machete)
+#   bash scripts/pre-commit.sh              # run all checks (no coverage)
+#   bash scripts/pre-commit.sh --coverage   # run all checks + code coverage
+#   bash scripts/pre-commit.sh --quick      # skip slow checks (audit, machete, coverage)
 #
 # To install as a git pre-commit hook:
 #   ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit
@@ -70,12 +71,14 @@ run_check_once() {
 
 # ── Parse arguments ──────────────────────────────────────────────────
 QUICK=0
+COVERAGE=0
 for arg in "$@"; do
     case "$arg" in
         --quick) QUICK=1 ;;
+        --coverage) COVERAGE=1 ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--quick]"
+            echo "Usage: $0 [--quick] [--coverage]"
             exit 1
             ;;
     esac
@@ -157,8 +160,8 @@ fi
 
 # ── 8. Code coverage (coverage.yml) ─────────────────────────────────
 header "Code coverage"
-if [ "$QUICK" -eq 1 ]; then
-    skip "cargo tarpaulin" "--quick mode"
+if [ "$COVERAGE" -eq 0 ]; then
+    skip "cargo tarpaulin" "use --coverage to enable"
 elif ! command -v cargo-tarpaulin >/dev/null 2>&1; then
     skip "cargo tarpaulin" "cargo-tarpaulin not installed"
 else
