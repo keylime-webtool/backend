@@ -10,10 +10,20 @@
 #![cfg(feature = "mockoon")]
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use axum::body::Body;
+use axum::http::Request;
+use tower::ServiceExt;
+
+use keylime_webtool_backend::api::routes::build_router;
+use keylime_webtool_backend::config::{CircuitBreakerConfig, KeylimeConfig};
+use keylime_webtool_backend::keylime::client::KeylimeClient;
 use keylime_webtool_backend::keylime::models::{
     RegistrarAgent, RuntimePolicy, VerifierAgent, VerifierResponse,
 };
+use keylime_webtool_backend::repository::{InMemoryCacheBackend, Repositories};
+use keylime_webtool_backend::state::AppState;
 
 const VERIFIER_BASE: &str = "http://localhost:3000";
 const REGISTRAR_BASE: &str = "http://localhost:3001";
@@ -970,4 +980,128 @@ async fn test_mockoon_all_agents_have_ekcert() {
             );
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Performance endpoint tests (using full backend stack against Mockoon)
+// ---------------------------------------------------------------------------
+
+fn build_test_app(verifier_url: &str) -> axum::Router {
+    let config = KeylimeConfig {
+        verifier_url: verifier_url.to_string(),
+        registrar_url: REGISTRAR_BASE.to_string(),
+        mtls: None,
+        timeout_secs: 5,
+        observation_interval_secs: 30,
+        circuit_breaker: CircuitBreakerConfig {
+            failure_threshold: 1,
+            reset_timeout_secs: 3600,
+        },
+    };
+    let client = KeylimeClient::new(config).unwrap();
+    let repos = Repositories::in_memory();
+    let state = AppState::new(
+        client,
+        repos.alert,
+        repos.attestation,
+        repos.policy,
+        repos.audit,
+        Arc::new(InMemoryCacheBackend::new()),
+        None,
+        false,
+    );
+    build_router(state)
+}
+
+#[tokio::test]
+async fn test_mockoon_performance_summary_returns_expected_fields() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let app = build_test_app(VERIFIER_BASE);
+    let req = Request::builder()
+        .uri("/api/performance/summary")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(body["success"].as_bool().unwrap());
+
+    let data = &body["data"];
+    assert_eq!(data["verifier_reachable"], true);
+    assert!(data["verifier_latency_ms"].as_u64().is_some());
+    assert_eq!(data["circuit_breaker_state"], "closed");
+    assert_eq!(data["agent_count"], 7);
+    assert!(data["estimated_attestation_rate"].as_f64().is_some());
+    assert!(data["capacity_utilization_pct"].as_f64().is_some());
+    assert_eq!(data["database_pool_status"], "not_configured");
+}
+
+#[tokio::test]
+async fn test_mockoon_performance_verifiers_returns_valid_metrics() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let app = build_test_app(VERIFIER_BASE);
+    let req = Request::builder()
+        .uri("/api/performance/verifiers")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(body["success"].as_bool().unwrap());
+
+    let data = &body["data"];
+    assert_eq!(data["verifier_url"], "configured");
+    assert_eq!(data["reachable"], true);
+    assert_eq!(data["agent_count"], 7);
+    assert!(data["api_latency_ms"].as_u64().is_some());
+    assert_eq!(data["circuit_breaker"], "closed");
+}
+
+#[tokio::test]
+async fn test_mockoon_performance_verifiers_circuit_breaker_open() {
+    if std::env::var("MOCKOON_VERIFIER").is_err() {
+        eprintln!("Skipping: MOCKOON_VERIFIER not set");
+        return;
+    }
+
+    let app = build_test_app("http://localhost:19999");
+
+    let req = Request::builder()
+        .uri("/api/performance/verifiers")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let data = &body["data"];
+    assert_eq!(data["reachable"], false);
+    assert_eq!(data["agent_count"], 0);
+    assert_eq!(data["circuit_breaker"], "open");
 }
