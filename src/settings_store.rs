@@ -134,6 +134,9 @@ fn dirs_path() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn round_trip_keylime_only() {
@@ -208,19 +211,20 @@ mod tests {
 
     #[test]
     fn resolve_config_path_from_env() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         std::env::set_var("KEYLIME_WEBTOOL_CONFIG", "/tmp/test-config.toml");
         let path = resolve_config_path();
-        assert_eq!(path, Some(PathBuf::from("/tmp/test-config.toml")));
         std::env::remove_var("KEYLIME_WEBTOOL_CONFIG");
+        assert_eq!(path, Some(PathBuf::from("/tmp/test-config.toml")));
     }
 
     #[test]
     fn resolve_config_path_empty_env() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         std::env::set_var("KEYLIME_WEBTOOL_CONFIG", "");
         let path = resolve_config_path();
-        // falls through to dirs_path
-        assert!(path.is_some() || path.is_none());
         std::env::remove_var("KEYLIME_WEBTOOL_CONFIG");
+        assert!(path.is_some() || path.is_none());
     }
 
     #[test]
