@@ -217,6 +217,7 @@ fn integration_routes() -> Router<AppState> {
 #[cfg(not(tarpaulin_include))]
 fn performance_routes() -> Router<AppState> {
     Router::new()
+        .route("/summary", get(handlers::performance::performance_summary))
         .route("/verifiers", get(handlers::performance::verifier_metrics))
         .route("/database", get(handlers::performance::database_metrics))
         .route(

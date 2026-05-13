@@ -2,28 +2,86 @@ use std::time::Instant;
 
 use axum::extract::State;
 use axum::Json;
+use serde::Serialize;
 
 use crate::api::response::ApiResponse;
 use crate::error::AppResult;
 use crate::state::AppState;
+
+#[derive(Debug, Serialize)]
+pub struct PerformanceSummary {
+    pub verifier_reachable: bool,
+    pub verifier_latency_ms: u64,
+    pub circuit_breaker_state: String,
+    pub agent_count: usize,
+    pub estimated_attestation_rate: f64,
+    pub capacity_utilization_pct: f64,
+    pub database_pool_status: String,
+}
+
+/// GET /api/performance/summary -- Aggregated dashboard summary.
+pub async fn performance_summary(
+    State(state): State<AppState>,
+) -> AppResult<Json<ApiResponse<PerformanceSummary>>> {
+    let start = Instant::now();
+    let keylime = state.keylime();
+    let verifier_available = keylime.verifier_available().await;
+
+    let (agent_count, verifier_reachable) = if verifier_available {
+        match keylime.list_verifier_agents().await {
+            Ok(agents) => (agents.len(), true),
+            Err(_) => (0, false),
+        }
+    } else {
+        (0, false)
+    };
+
+    let latency = start.elapsed().as_millis() as u64;
+    let circuit_breaker_state = if verifier_available { "closed" } else { "open" };
+    let attestation_rate = agent_count as f64 / 30.0;
+    let utilization = compute_utilization_pct(agent_count as u64, 1000);
+
+    Ok(Json(ApiResponse::ok(PerformanceSummary {
+        verifier_reachable,
+        verifier_latency_ms: latency,
+        circuit_breaker_state: circuit_breaker_state.to_string(),
+        agent_count,
+        estimated_attestation_rate: attestation_rate,
+        capacity_utilization_pct: utilization,
+        database_pool_status: "not_configured".to_string(),
+    })))
+}
 
 /// GET /api/performance/verifiers -- Verifier cluster metrics (FR-064).
 pub async fn verifier_metrics(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<serde_json::Value>>> {
     let start = Instant::now();
-    let agent_count = state.keylime().list_verifier_agents().await?.len();
+    let keylime = state.keylime();
+    let verifier_available = keylime.verifier_available().await;
+
+    let (agent_count, reachable) = if verifier_available {
+        match keylime.list_verifier_agents().await {
+            Ok(agents) => (agents.len(), true),
+            Err(_) => (0, false),
+        }
+    } else {
+        (0, false)
+    };
+
     let latency = start.elapsed().as_millis() as u64;
+    let circuit_breaker = if reachable && verifier_available {
+        "closed"
+    } else {
+        "open"
+    };
 
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "verifier_url": "configured",
+        "reachable": reachable,
         "agent_count": agent_count,
         "api_latency_ms": latency,
-        "circuit_breaker": if state.keylime().verifier_available().await {
-            "closed"
-        } else {
-            "open"
-        },
+        "circuit_breaker": circuit_breaker,
     }))))
 }
 

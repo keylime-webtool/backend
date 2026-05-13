@@ -492,6 +492,11 @@ echo ""
 # -- Performance endpoints --
 echo "  Performance"
 echo "  -----------"
+run_test "Performance summary"          "/api/performance/summary"
+run_test "  verifier reachable"         "/api/performance/summary" \
+    ".data.verifier_reachable" "true"
+run_test "  circuit breaker closed"     "/api/performance/summary" \
+    ".data.circuit_breaker_state" "closed"
 run_test "Verifier metrics"             "/api/performance/verifiers"
 run_test "Database metrics"             "/api/performance/database"
 run_test "API response times"           "/api/performance/api-response-times"
