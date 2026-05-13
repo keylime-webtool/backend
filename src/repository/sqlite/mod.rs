@@ -9,7 +9,7 @@ pub use audit::SqliteAuditRepository;
 pub use policy::SqlitePolicyRepository;
 
 #[cfg(test)]
-pub(crate) use alert::insert_test_alert;
+pub(crate) use alert::insert_alert;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;

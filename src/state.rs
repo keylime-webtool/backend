@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -28,11 +29,13 @@ pub struct AppState {
     pub audit_repo: Arc<dyn AuditRepository>,
     pub cache: Arc<dyn CacheBackend>,
     config_path: Option<PathBuf>,
+    seed_mock_data: Arc<AtomicBool>,
     ssh_config: Arc<SshConfig>,
     attestation_tracker: Arc<RwLock<HashMap<String, AttestationSnapshot>>>,
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         keylime: KeylimeClient,
         alert_repo: Arc<dyn AlertRepository>,
@@ -41,6 +44,7 @@ impl AppState {
         audit_repo: Arc<dyn AuditRepository>,
         cache: Arc<dyn CacheBackend>,
         config_path: Option<PathBuf>,
+        seed_mock_data: bool,
     ) -> Self {
         Self {
             keylime_inner: Arc::new(RwLock::new(Arc::new(keylime))),
@@ -50,6 +54,7 @@ impl AppState {
             audit_repo,
             cache,
             config_path,
+            seed_mock_data: Arc::new(AtomicBool::new(seed_mock_data)),
             ssh_config: Arc::new(SshConfig::default()),
             attestation_tracker: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -72,6 +77,14 @@ impl AppState {
         *self.keylime_inner.write().unwrap() = Arc::new(new_client);
     }
 
+    pub fn seed_mock_data(&self) -> bool {
+        self.seed_mock_data.load(Ordering::Relaxed)
+    }
+
+    pub fn set_seed_mock_data(&self, val: bool) {
+        self.seed_mock_data.store(val, Ordering::Relaxed);
+    }
+
     pub fn persist_settings(&self) {
         let Some(path) = self.config_path.clone() else {
             return;
@@ -83,6 +96,11 @@ impl AppState {
                 registrar_url: kl.registrar_url().to_string(),
             }),
             mtls: kl.mtls_config().cloned(),
+            seed_mock_data: if self.seed_mock_data() {
+                Some(true)
+            } else {
+                None
+            },
         };
         tokio::spawn(settings_store::save_persisted_settings(path, settings));
     }
@@ -148,6 +166,7 @@ mod tests {
             repos.audit,
             Arc::new(InMemoryCacheBackend::new()),
             None,
+            false,
         )
     }
 
