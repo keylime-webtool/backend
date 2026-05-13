@@ -43,6 +43,11 @@ async fn main() -> anyhow::Result<()> {
         .or_else(|| std::env::var("KEYLIME_REGISTRAR_URL").ok())
         .unwrap_or_else(|| "http://localhost:3001".to_string());
 
+    let seed_mock_data = persisted
+        .as_ref()
+        .and_then(|s| s.seed_mock_data)
+        .unwrap_or(false);
+
     let mtls = persisted.and_then(|s| s.mtls);
 
     let observation_interval_secs: u64 = std::env::var("OBSERVATION_INTERVAL_SECS")
@@ -66,7 +71,11 @@ async fn main() -> anyhow::Result<()> {
             let db = SqliteDb::connect(&url).await?;
             db.init_schema().await?;
             tracing::info!("SQLite database connected: {url}");
-            db.repositories()
+            let repos = db.repositories();
+            if seed_mock_data {
+                repos.alert.seed_if_empty().await;
+            }
+            repos
         }
         Ok(url) => {
             tracing::warn!("Unsupported DATABASE_URL scheme: {url} — using in-memory repos");
@@ -100,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         repos.audit,
         cache,
         config_path,
+        seed_mock_data,
     );
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());

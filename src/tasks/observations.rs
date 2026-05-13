@@ -145,6 +145,7 @@ mod tests {
             repos.audit,
             Arc::new(InMemoryCacheBackend::new()),
             None,
+            false,
         )
     }
 

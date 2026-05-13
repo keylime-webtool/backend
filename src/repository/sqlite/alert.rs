@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use crate::models::alert::{Alert, AlertSummary};
+use crate::models::alert::{seed_alerts, Alert, AlertSummary};
 use crate::repository::AlertRepository;
 
 pub struct SqliteAlertRepository {
@@ -23,7 +23,6 @@ fn parse_enum<T: serde::de::DeserializeOwned>(raw: &str) -> T {
     })
 }
 
-#[cfg(test)]
 fn serialize_enum<T: serde::Serialize>(val: &T) -> String {
     let json = serde_json::to_string(val).expect("enum serialization");
     json.trim_matches('"').to_string()
@@ -262,6 +261,22 @@ impl AlertRepository for SqliteAlertRepository {
         Ok(())
     }
 
+    async fn seed_if_empty(&self) {
+        let count: Result<(i64,), _> = sqlx::query_as("SELECT COUNT(*) FROM alerts")
+            .fetch_one(&self.pool)
+            .await;
+        match count {
+            Ok((0,)) => {
+                tracing::info!("seeding alerts table with mock data");
+                for alert in seed_alerts() {
+                    insert_alert(&self.pool, &alert).await;
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("failed to check alerts count for seeding: {e}"),
+        }
+    }
+
     async fn escalate(&self, id: Uuid) -> Result<(), String> {
         let mut tx = self.pool.begin().await.map_err(|e| e.to_string())?;
         let id_str = id.to_string();
@@ -289,8 +304,7 @@ impl AlertRepository for SqliteAlertRepository {
     }
 }
 
-#[cfg(test)]
-pub(crate) async fn insert_test_alert(pool: &SqlitePool, alert: &Alert) {
+pub(crate) async fn insert_alert(pool: &SqlitePool, alert: &Alert) {
     let agents_json = serde_json::to_string(&alert.affected_agents).unwrap();
     sqlx::query(
         "INSERT INTO alerts (id, alert_type, severity, description, affected_agents, state, \
@@ -357,7 +371,7 @@ mod tests {
         let id_acked = Uuid::parse_str("a0000001-0000-4000-8000-000000000002").unwrap();
         let id_resolved = Uuid::parse_str("a0000001-0000-4000-8000-000000000003").unwrap();
 
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_alert(
                 "a0000001-0000-4000-8000-000000000001",
@@ -366,7 +380,7 @@ mod tests {
             ),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_alert(
                 "a0000001-0000-4000-8000-000000000002",
@@ -375,7 +389,7 @@ mod tests {
             ),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_alert(
                 "a0000001-0000-4000-8000-000000000003",

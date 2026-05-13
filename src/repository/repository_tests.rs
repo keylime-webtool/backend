@@ -9,7 +9,7 @@ mod tests {
     use crate::models::alert::{Alert, AlertSeverity, AlertState, AlertType};
     use crate::models::attestation::{AttestationResult, FailureType};
     use crate::models::policy::{ApprovalStatus, Policy, PolicyChange, PolicyKind};
-    use crate::repository::sqlite::{insert_test_alert, test_db};
+    use crate::repository::sqlite::{insert_alert, test_db};
     use crate::repository::{
         AlertRepository, AttestationRepository, AuditRepository, Repositories,
     };
@@ -463,12 +463,12 @@ mod tests {
     #[tokio::test]
     async fn alert_query_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[0], AlertSeverity::Critical, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(
                 SEED_IDS[1],
@@ -477,17 +477,17 @@ mod tests {
             ),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[2], AlertSeverity::Warning, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[3], AlertSeverity::Info, AlertState::Resolved),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(
                 SEED_IDS[4],
@@ -496,7 +496,7 @@ mod tests {
             ),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[5], AlertSeverity::Info, AlertState::Dismissed),
         )
@@ -542,12 +542,12 @@ mod tests {
     #[tokio::test]
     async fn acknowledge_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[0], AlertSeverity::Critical, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(
                 SEED_IDS[1],
@@ -602,12 +602,12 @@ mod tests {
     #[tokio::test]
     async fn investigate_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[0], AlertSeverity::Critical, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[3], AlertSeverity::Info, AlertState::Resolved),
         )
@@ -655,12 +655,12 @@ mod tests {
     #[tokio::test]
     async fn resolve_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[2], AlertSeverity::Warning, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[3], AlertSeverity::Info, AlertState::Resolved),
         )
@@ -700,12 +700,12 @@ mod tests {
     #[tokio::test]
     async fn dismiss_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[0], AlertSeverity::Critical, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[5], AlertSeverity::Info, AlertState::Dismissed),
         )
@@ -746,12 +746,12 @@ mod tests {
     #[tokio::test]
     async fn escalate_equivalence_sqlite() {
         let db = test_db().await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[0], AlertSeverity::Critical, AlertState::New),
         )
         .await;
-        insert_test_alert(
+        insert_alert(
             &db.pool,
             &make_test_alert(SEED_IDS[3], AlertSeverity::Info, AlertState::Resolved),
         )

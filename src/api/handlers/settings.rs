@@ -15,6 +15,8 @@ use crate::state::AppState;
 pub struct KeylimeSettings {
     pub verifier_url: String,
     pub registrar_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_mock_data: Option<bool>,
 }
 
 /// GET /api/settings/keylime -- return current Registrar/Verifier URLs.
@@ -25,6 +27,11 @@ pub async fn get_keylime(
     let settings = KeylimeSettings {
         verifier_url: kl.verifier_url().to_string(),
         registrar_url: kl.registrar_url().to_string(),
+        seed_mock_data: if state.seed_mock_data() {
+            Some(true)
+        } else {
+            None
+        },
     };
     Ok(Json(ApiResponse::ok(settings)))
 }
@@ -50,11 +57,24 @@ pub async fn update_keylime(
 
     let new_client = KeylimeClient::new(config)?;
     state.swap_keylime(new_client);
+
+    if let Some(seed) = body.seed_mock_data {
+        state.set_seed_mock_data(seed);
+        if seed {
+            state.alert_repo.seed_if_empty().await;
+        }
+    }
+
     state.persist_settings();
 
     let settings = KeylimeSettings {
         verifier_url: body.verifier_url,
         registrar_url: body.registrar_url,
+        seed_mock_data: if state.seed_mock_data() {
+            Some(true)
+        } else {
+            None
+        },
     };
     Ok(Json(ApiResponse::ok(settings)))
 }
@@ -256,11 +276,43 @@ mod tests {
         let settings = KeylimeSettings {
             verifier_url: "http://v:3000".into(),
             registrar_url: "http://r:3001".into(),
+            seed_mock_data: None,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: KeylimeSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.verifier_url, "http://v:3000");
         assert_eq!(deserialized.registrar_url, "http://r:3001");
+        assert_eq!(deserialized.seed_mock_data, None);
+    }
+
+    #[test]
+    fn keylime_settings_seed_mock_data_roundtrip() {
+        let settings = KeylimeSettings {
+            verifier_url: "http://v:3000".into(),
+            registrar_url: "http://r:3001".into(),
+            seed_mock_data: Some(true),
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let deserialized: KeylimeSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.seed_mock_data, Some(true));
+    }
+
+    #[test]
+    fn keylime_settings_omits_seed_mock_data_when_none() {
+        let settings = KeylimeSettings {
+            verifier_url: "http://v:3000".into(),
+            registrar_url: "http://r:3001".into(),
+            seed_mock_data: None,
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(!json.contains("seed_mock_data"));
+    }
+
+    #[test]
+    fn keylime_settings_deserializes_without_seed_field() {
+        let json = r#"{"verifier_url":"http://v:3000","registrar_url":"http://r:3001"}"#;
+        let deserialized: KeylimeSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(deserialized.seed_mock_data, None);
     }
 
     #[test]

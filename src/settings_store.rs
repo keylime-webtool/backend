@@ -23,6 +23,8 @@ use crate::config::MtlsConfig;
 pub struct PersistedSettings {
     pub keylime: Option<PersistedKeylime>,
     pub mtls: Option<MtlsConfig>,
+    #[serde(default)]
+    pub seed_mock_data: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -140,7 +142,7 @@ mod tests {
                 verifier_url: "https://v.example.com:8881".into(),
                 registrar_url: "https://r.example.com:8891".into(),
             }),
-            mtls: None,
+            ..Default::default()
         };
         let toml_str = toml::to_string_pretty(&settings).unwrap();
         let parsed: PersistedSettings = toml::from_str(&toml_str).unwrap();
@@ -163,6 +165,7 @@ mod tests {
                 key: "/etc/key.pem".into(),
                 ca_cert: PathBuf::from("/etc/ca.pem"),
             }),
+            ..Default::default()
         };
         let toml_str = toml::to_string_pretty(&settings).unwrap();
         let parsed: PersistedSettings = toml::from_str(&toml_str).unwrap();
@@ -188,7 +191,7 @@ mod tests {
                 verifier_url: "http://localhost:3000".into(),
                 registrar_url: "http://localhost:3001".into(),
             }),
-            mtls: None,
+            ..Default::default()
         };
 
         save_sync(&path, &settings);
