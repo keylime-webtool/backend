@@ -39,6 +39,7 @@ impl AlertStore {
                 sla_window: Some("15m".into()),
                 source: "verifier".into(),
                 external_ticket_id: None,
+                mock: true,
             },
             // WARNING: failed push-mode agent consecutive failures (Acknowledged)
             Alert {
@@ -61,6 +62,7 @@ impl AlertStore {
                 sla_window: Some("30m".into()),
                 source: "verifier".into(),
                 external_ticket_id: None,
+                mock: true,
             },
             // WARNING: certificate approaching expiry (New)
             Alert {
@@ -81,6 +83,7 @@ impl AlertStore {
                 sla_window: None,
                 source: "certificate-monitor".into(),
                 external_ticket_id: None,
+                mock: true,
             },
             // INFO: PCR change detected on healthy push agent (Resolved)
             Alert {
@@ -105,6 +108,7 @@ impl AlertStore {
                 sla_window: None,
                 source: "verifier".into(),
                 external_ticket_id: None,
+                mock: true,
             },
             // CRITICAL: policy violation on failed pull agent (Under Investigation)
             Alert {
@@ -130,6 +134,7 @@ impl AlertStore {
                 sla_window: Some("15m".into()),
                 source: "verifier".into(),
                 external_ticket_id: Some("SEC-2024-0042".into()),
+                mock: true,
             },
             // INFO: clock skew detected (Dismissed)
             Alert {
@@ -150,6 +155,7 @@ impl AlertStore {
                 sla_window: None,
                 source: "verifier".into(),
                 external_ticket_id: None,
+                mock: true,
             },
         ];
 
