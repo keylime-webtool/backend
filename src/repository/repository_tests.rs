@@ -55,13 +55,13 @@ mod tests {
     async fn in_memory_factory_creates_working_repos() {
         let repos = Repositories::in_memory();
 
-        let alerts = repos.alert.list(None, None).await;
+        let alerts = repos.alert.list(None, None, true).await;
         assert!(
             !alerts.is_empty(),
             "in-memory alert repo should have seed data"
         );
 
-        let summary = repos.alert.summary().await;
+        let summary = repos.alert.summary(true).await;
         assert!(summary.critical > 0);
 
         let policies = repos.policy.list().await.unwrap();
@@ -85,10 +85,10 @@ mod tests {
         let db = test_db().await;
         let repos = db.repositories();
 
-        let alerts = repos.alert.list(None, None).await;
+        let alerts = repos.alert.list(None, None, true).await;
         assert!(alerts.is_empty(), "sqlite alert repo starts empty");
 
-        let summary = repos.alert.summary().await;
+        let summary = repos.alert.summary(true).await;
         assert_eq!(summary.critical, 0);
         assert_eq!(summary.active_alerts, 0);
 
@@ -405,6 +405,7 @@ mod tests {
             sla_window: None,
             source: "test".into(),
             external_ticket_id: None,
+            mock: false,
         }
     }
 
@@ -424,17 +425,17 @@ mod tests {
         expected_new: usize,
         label: &str,
     ) {
-        let all = alert.list(None, None).await;
+        let all = alert.list(None, None, true).await;
         assert_eq!(all.len(), expected_total, "[{label}] total alert count");
 
-        let critical = alert.list(Some("critical"), None).await;
+        let critical = alert.list(Some("critical"), None, true).await;
         assert_eq!(
             critical.len(),
             expected_critical,
             "[{label}] critical count"
         );
 
-        let new = alert.list(None, Some("new")).await;
+        let new = alert.list(None, Some("new"), true).await;
         assert_eq!(new.len(), expected_new, "[{label}] new count");
 
         let known_id = Uuid::parse_str(SEED_IDS[0]).unwrap();
@@ -447,7 +448,7 @@ mod tests {
             "[{label}] get Uuid::nil should return None"
         );
 
-        let summary = alert.summary().await;
+        let summary = alert.summary(true).await;
         assert!(
             summary.critical > 0 || expected_critical == 0,
             "[{label}] summary critical count"

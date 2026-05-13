@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     escalation_count INTEGER NOT NULL DEFAULT 0,
     sla_window TEXT,
     source TEXT NOT NULL,
-    external_ticket_id TEXT
+    external_ticket_id TEXT,
+    mock INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS policies (

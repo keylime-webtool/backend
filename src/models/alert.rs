@@ -63,6 +63,8 @@ pub struct Alert {
     pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_ticket_id: Option<String>,
+    #[serde(skip)]
+    pub mock: bool,
 }
 
 /// Summary statistics for the dashboard.
@@ -100,6 +102,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: Some("15m".into()),
             source: "verifier".into(),
             external_ticket_id: None,
+            mock: true,
         },
         Alert {
             id: Uuid::parse_str("a0000001-0000-4000-8000-000000000002").unwrap(),
@@ -121,6 +124,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: Some("30m".into()),
             source: "verifier".into(),
             external_ticket_id: None,
+            mock: true,
         },
         Alert {
             id: Uuid::parse_str("a0000001-0000-4000-8000-000000000003").unwrap(),
@@ -140,6 +144,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: None,
             source: "certificate-monitor".into(),
             external_ticket_id: None,
+            mock: true,
         },
         Alert {
             id: Uuid::parse_str("a0000001-0000-4000-8000-000000000004").unwrap(),
@@ -163,6 +168,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: None,
             source: "verifier".into(),
             external_ticket_id: None,
+            mock: true,
         },
         Alert {
             id: Uuid::parse_str("a0000001-0000-4000-8000-000000000005").unwrap(),
@@ -186,6 +192,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: Some("15m".into()),
             source: "verifier".into(),
             external_ticket_id: Some("SEC-2024-0042".into()),
+            mock: true,
         },
         Alert {
             id: Uuid::parse_str("a0000001-0000-4000-8000-000000000006").unwrap(),
@@ -205,6 +212,7 @@ pub fn seed_alerts() -> Vec<Alert> {
             sla_window: None,
             source: "verifier".into(),
             external_ticket_id: None,
+            mock: true,
         },
     ]
 }
@@ -289,10 +297,12 @@ mod tests {
             sla_window: None,
             source: "test".into(),
             external_ticket_id: None,
+            mock: false,
         };
         let json = serde_json::to_value(&alert).unwrap();
         assert!(json.get("type").is_some());
         assert!(json.get("alert_type").is_none());
+        assert!(json.get("mock").is_none());
         assert_eq!(json["type"], "cert_expiry");
     }
 

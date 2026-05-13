@@ -23,7 +23,11 @@ pub async fn list_alerts(
 ) -> AppResult<Json<ApiResponse<PaginatedResponse<Alert>>>> {
     let alerts = state
         .alert_repo
-        .list(params.severity.as_deref(), params.state.as_deref())
+        .list(
+            params.severity.as_deref(),
+            params.state.as_deref(),
+            state.seed_mock_data(),
+        )
         .await;
 
     let page = params.page.unwrap_or(1).max(1);
@@ -50,7 +54,7 @@ pub async fn list_alerts(
 pub async fn get_summary(
     State(state): State<AppState>,
 ) -> AppResult<Json<ApiResponse<AlertSummary>>> {
-    let summary = state.alert_repo.summary().await;
+    let summary = state.alert_repo.summary(state.seed_mock_data()).await;
     Ok(Json(ApiResponse::ok(summary)))
 }
 

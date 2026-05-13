@@ -55,13 +55,22 @@ fn row_to_alert(row: &sqlx::sqlite::SqliteRow) -> Alert {
         sla_window: row.get("sla_window"),
         source: row.get("source"),
         external_ticket_id: row.get("external_ticket_id"),
+        mock: row.get::<i32, _>("mock") != 0,
     }
 }
 
 #[async_trait]
 impl AlertRepository for SqliteAlertRepository {
-    async fn list(&self, severity: Option<&str>, state: Option<&str>) -> Vec<Alert> {
+    async fn list(
+        &self,
+        severity: Option<&str>,
+        state: Option<&str>,
+        include_mock: bool,
+    ) -> Vec<Alert> {
         let mut sql = "SELECT * FROM alerts WHERE 1=1".to_string();
+        if !include_mock {
+            sql.push_str(" AND mock = 0");
+        }
         if severity.is_some() {
             sql.push_str(" AND severity = ?");
         }
@@ -96,8 +105,9 @@ impl AlertRepository for SqliteAlertRepository {
             .map(|row| row_to_alert(&row))
     }
 
-    async fn summary(&self) -> AlertSummary {
-        let row = sqlx::query(
+    async fn summary(&self, include_mock: bool) -> AlertSummary {
+        let mock_filter = if include_mock { "" } else { "WHERE mock = 0" };
+        let sql = format!(
             "SELECT
                 COUNT(*) FILTER (WHERE severity = 'critical') AS critical,
                 COUNT(*) FILTER (WHERE severity = 'warning') AS warnings,
@@ -106,10 +116,9 @@ impl AlertRepository for SqliteAlertRepository {
                     AND state NOT IN ('resolved', 'dismissed')) AS active_critical,
                 COUNT(*) FILTER (WHERE severity = 'warning'
                     AND state NOT IN ('resolved', 'dismissed')) AS active_warnings
-            FROM alerts",
-        )
-        .fetch_one(&self.pool)
-        .await;
+            FROM alerts {mock_filter}",
+        );
+        let row = sqlx::query(&sql).fetch_one(&self.pool).await;
 
         match row {
             Ok(r) => {
@@ -310,7 +319,7 @@ pub(crate) async fn insert_alert(pool: &SqlitePool, alert: &Alert) {
         "INSERT INTO alerts (id, alert_type, severity, description, affected_agents, state, \
          created_timestamp, acknowledged_timestamp, assigned_to, investigation_notes, \
          root_cause, resolution, auto_resolved, escalation_count, sla_window, source, \
-         external_ticket_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         external_ticket_id, mock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(alert.id.to_string())
     .bind(serialize_enum(&alert.alert_type))
@@ -329,6 +338,7 @@ pub(crate) async fn insert_alert(pool: &SqlitePool, alert: &Alert) {
     .bind(&alert.sla_window)
     .bind(&alert.source)
     .bind(&alert.external_ticket_id)
+    .bind(alert.mock as i32)
     .execute(pool)
     .await
     .expect("insert test alert");
@@ -360,6 +370,7 @@ mod tests {
             sla_window: None,
             source: "test".into(),
             external_ticket_id: None,
+            mock: false,
         }
     }
 
@@ -405,21 +416,21 @@ mod tests {
     #[tokio::test]
     async fn sqlite_list_all() {
         let (repo, _, _, _) = seeded_repo().await;
-        let all = repo.list(None, None).await;
+        let all = repo.list(None, None, true).await;
         assert_eq!(all.len(), 3);
     }
 
     #[tokio::test]
     async fn sqlite_filter_by_severity() {
         let (repo, _, _, _) = seeded_repo().await;
-        let critical = repo.list(Some("critical"), None).await;
+        let critical = repo.list(Some("critical"), None, true).await;
         assert_eq!(critical.len(), 1);
     }
 
     #[tokio::test]
     async fn sqlite_filter_by_state() {
         let (repo, _, _, _) = seeded_repo().await;
-        let new = repo.list(None, Some("new")).await;
+        let new = repo.list(None, Some("new"), true).await;
         assert_eq!(new.len(), 1);
     }
 
@@ -500,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn sqlite_summary() {
         let (repo, _, _, _) = seeded_repo().await;
-        let summary = repo.summary().await;
+        let summary = repo.summary(true).await;
         assert_eq!(summary.critical, 1);
         assert_eq!(summary.warnings, 1);
         assert_eq!(summary.info, 1);
