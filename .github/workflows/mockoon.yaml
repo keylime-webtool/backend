@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
       - name: Install mockoon-cli
         run: npm install -g @mockoon/cli
       - name: Start Verifier mock (port 3000)
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
       - name: Install mockoon-cli
         run: npm install -g @mockoon/cli
       - name: Start Registrar mock (port 3001)
