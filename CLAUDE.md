@@ -13,7 +13,8 @@ The full SRS (69 FRs, 23 NFRs, 29 SRs with Gherkin acceptance criteria) lives in
 - **Language:** Rust with `#![forbid(unsafe_code)]` (SR-023)
 - **Framework:** Axum (async HTTP/WebSocket)
 - **Runtime:** Tokio
-- **Database:** TimescaleDB (time-series attestation history/metrics)
+- **Database (production):** TimescaleDB (time-series attestation history/metrics)
+- **Database (dev/test):** SQLite via `DATABASE_URL` env var (`sqlite::memory:` or `sqlite://./file.db`); auto-creates schema on startup, optional mock seeding
 - **Cache:** Redis with tiered TTLs (agent list 10s, detail 30s, policies 60s, certs 300s)
 - **Keylime comms:** mTLS via rustls, private keys in HSM/Vault (never cleartext on disk)
 - **Auth:** OIDC/SAML + short-lived JWT (15 min) with refresh rotation
@@ -50,6 +51,20 @@ pkill -f mockoon-cli
 The mock fleet has 3 agents: healthy (GET_QUOTE), failed (FAILED), and push-mode (PROVIDE_V). Tests are gated behind `#[cfg(feature = "mockoon")]` and env vars `MOCKOON_VERIFIER`/`MOCKOON_REGISTRAR`.
 
 Alternatively, open `test-data/verifier.json` and `test-data/registrar.json` in the Mockoon desktop app, start both environments, then run the tests from a terminal. The GUI shows live request logs for debugging.
+
+## SQLite Database
+
+For development and testing, the backend supports SQLite as a lightweight database alternative to TimescaleDB. It is controlled entirely by the `DATABASE_URL` environment variable:
+
+```bash
+DATABASE_URL=sqlite::memory: cargo run       # in-memory (ephemeral)
+DATABASE_URL=sqlite://./keylime-dev.db cargo run  # file-based (persistent)
+cargo run                                    # no database (in-memory repositories)
+```
+
+The schema (alerts, policies, policy_changes, audit_entries, attestation_results, correlated_incidents) is auto-created on startup. When `seed_mock_data = true` is set in the settings file, the alerts table is seeded with sample data on first run.
+
+See [docs/TESTING_WITH_SQLITE.md](docs/TESTING_WITH_SQLITE.md) for the full guide.
 
 ## Architecture
 

@@ -250,6 +250,24 @@ curl -X POST http://localhost:8080/api/auth/logout | jq
 
 The backend reads `KEYLIME_VERIFIER_URL` and `KEYLIME_REGISTRAR_URL` environment variables (defaulting to `http://localhost:3000` and `http://localhost:3001`).
 
+## SQLite Database
+
+The backend supports SQLite as a lightweight database for development and testing, controlled by the `DATABASE_URL` environment variable. When unset, in-memory repositories are used (no database).
+
+```bash
+# In-memory (ephemeral, data lost on restart)
+DATABASE_URL=sqlite::memory: cargo run
+
+# File-based (persists across restarts, auto-created)
+DATABASE_URL=sqlite://./keylime-dev.db cargo run
+```
+
+SQLite stores alerts, policies, policy changes, audit entries, attestation results, and correlated incidents. The schema is auto-created on startup (`CREATE TABLE IF NOT EXISTS`).
+
+When mock data seeding is enabled via the settings file (`seed_mock_data = true`), the alerts table is populated with sample data on first run.
+
+For a complete guide including schema details, type conventions, inspection commands, and limitations vs production Postgres, see [docs/TESTING_WITH_SQLITE.md](docs/TESTING_WITH_SQLITE.md).
+
 ### Mock fleet
 
 The mock data defines a fleet of 7 agents in different states:
