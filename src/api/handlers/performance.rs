@@ -37,7 +37,7 @@ pub async fn performance_summary(
     };
 
     let latency = start.elapsed().as_millis() as u64;
-    let circuit_breaker_state = if verifier_available { "closed" } else { "open" };
+    let circuit_breaker_state = derive_circuit_breaker_state(verifier_reachable);
     let attestation_rate = agent_count as f64 / 30.0;
     let utilization = compute_utilization_pct(agent_count as u64, 1000);
 
@@ -144,6 +144,14 @@ pub async fn capacity_planning(
     }))))
 }
 
+pub(crate) fn derive_circuit_breaker_state(reachable: bool) -> &'static str {
+    if reachable {
+        "closed"
+    } else {
+        "open"
+    }
+}
+
 pub(crate) fn compute_utilization_pct(active: u64, capacity: u64) -> f64 {
     if capacity > 0 {
         (active as f64 / capacity as f64) * 100.0
@@ -155,6 +163,16 @@ pub(crate) fn compute_utilization_pct(active: u64, capacity: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn circuit_breaker_closed_when_reachable() {
+        assert_eq!(derive_circuit_breaker_state(true), "closed");
+    }
+
+    #[test]
+    fn circuit_breaker_open_when_unreachable() {
+        assert_eq!(derive_circuit_breaker_state(false), "open");
+    }
 
     #[test]
     fn utilization_zero_capacity() {
