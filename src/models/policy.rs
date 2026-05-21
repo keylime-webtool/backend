@@ -168,6 +168,40 @@ mod tests {
         assert_eq!(PolicyKind::from_name("allowlist-prod"), PolicyKind::Ima);
     }
 
+    fn default_verifier() -> crate::keylime::models::VerifierAgent {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    #[test]
+    fn classify_detects_mb_from_agent_data() {
+        let agent = crate::keylime::models::VerifierAgent {
+            mb_policy: Some("my-policy".into()),
+            ..default_verifier()
+        };
+        assert_eq!(
+            PolicyKind::classify("my-policy", &[agent]),
+            PolicyKind::MeasuredBoot
+        );
+    }
+
+    #[test]
+    fn classify_detects_ima_from_agent_data() {
+        let agent = crate::keylime::models::VerifierAgent {
+            ima_policy: Some("my-policy".into()),
+            ..default_verifier()
+        };
+        assert_eq!(PolicyKind::classify("my-policy", &[agent]), PolicyKind::Ima);
+    }
+
+    #[test]
+    fn classify_falls_back_to_name_heuristic() {
+        assert_eq!(
+            PolicyKind::classify("boot-policy", &[]),
+            PolicyKind::MeasuredBoot
+        );
+        assert_eq!(PolicyKind::classify("allowlist-prod", &[]), PolicyKind::Ima);
+    }
+
     #[test]
     fn impact_analysis_serializes() {
         let analysis = ImpactAnalysis {

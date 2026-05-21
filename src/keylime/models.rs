@@ -409,6 +409,114 @@ mod tests {
     }
 
     #[test]
+    fn push_mode_when_accept_attestations_present() {
+        let agent = VerifierAgent {
+            accept_attestations: Some(true),
+            ip: Some("10.0.0.1".into()),
+            port: Some(9002),
+            ..default_verifier()
+        };
+        assert!(agent.is_push_mode());
+    }
+
+    #[test]
+    fn push_mode_when_null_ip_port_with_attestation_count() {
+        let agent = VerifierAgent {
+            attestation_count: Some(5),
+            ..default_verifier()
+        };
+        assert!(agent.is_push_mode());
+    }
+
+    #[test]
+    fn pull_mode_when_ip_and_port_present() {
+        let agent = VerifierAgent {
+            ip: Some("10.0.0.1".into()),
+            port: Some(9002),
+            ..default_verifier()
+        };
+        assert!(!agent.is_push_mode());
+    }
+
+    #[test]
+    fn pull_mode_default_agent() {
+        let agent = default_verifier();
+        assert!(!agent.is_push_mode());
+    }
+
+    #[test]
+    fn parse_state_str_registered() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(0),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Registered");
+    }
+
+    #[test]
+    fn parse_state_str_start() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(1),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Start");
+    }
+
+    #[test]
+    fn parse_state_str_get_quote() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(3),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "GetQuote");
+    }
+
+    #[test]
+    fn parse_state_str_failed() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(7),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Failed");
+    }
+
+    #[test]
+    fn parse_state_str_terminated() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(8),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Terminated");
+    }
+
+    #[test]
+    fn parse_state_str_unknown_integer() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(99),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Unknown");
+    }
+
+    #[test]
+    fn parse_state_str_from_string() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!("Running"),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Running");
+    }
+
+    #[test]
+    fn parse_state_str_non_number_non_string() {
+        let agent = VerifierAgent {
+            operational_state: serde_json::json!(null),
+            ..default_verifier()
+        };
+        assert_eq!(agent.parse_state_str(), "Unknown");
+    }
+
+    #[test]
     fn effective_ima_prefers_ima_policy_field() {
         let agent = VerifierAgent {
             ima_policy: Some("policy-a".into()),
