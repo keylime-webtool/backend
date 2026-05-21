@@ -120,6 +120,7 @@ cleanup() {
     [ -n "${BACKEND_PID:-}" ]           && kill "$BACKEND_PID" 2>/dev/null || true
     [ -n "${MOCKOON_VERIFIER_PID:-}" ]  && kill "$MOCKOON_VERIFIER_PID" 2>/dev/null || true
     [ -n "${MOCKOON_REGISTRAR_PID:-}" ] && kill "$MOCKOON_REGISTRAR_PID" 2>/dev/null || true
+    [ -n "${TEST_CONFIG:-}" ]           && rm -f "$TEST_CONFIG" || true
     wait 2>/dev/null || true
 }
 
@@ -333,6 +334,8 @@ if [ "$NO_MOCKS" = false ]; then
     cargo build --quiet 2>&1
 
     echo "-------- Starting backend"
+    TEST_CONFIG="$(mktemp "${GIT_ROOT}/.test-settings-XXXXXX.toml")"
+    export KEYLIME_WEBTOOL_CONFIG="$TEST_CONFIG"
     RUST_LOG=info cargo run --quiet &
     BACKEND_PID=$!
 
