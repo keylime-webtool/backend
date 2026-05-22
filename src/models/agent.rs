@@ -320,6 +320,138 @@ mod tests {
     }
 
     #[test]
+    fn from_push_agent_unknown_status_returns_pending() {
+        let agent = crate::keylime::models::VerifierAgent {
+            attestation_status: Some("UNKNOWN_VALUE".into()),
+            accept_attestations: Some(true),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Pending);
+    }
+
+    #[test]
+    fn from_push_agent_not_accepting_returns_fail() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(false),
+            attestation_count: Some(10),
+            consecutive_attestation_failures: Some(0),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Fail);
+    }
+
+    #[test]
+    fn from_push_agent_consecutive_failures_returns_fail() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(10),
+            consecutive_attestation_failures: Some(3),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Fail);
+    }
+
+    #[test]
+    fn from_push_agent_zero_count_returns_pending() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(0),
+            consecutive_attestation_failures: Some(0),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Pending);
+    }
+
+    #[test]
+    fn from_push_agent_malformed_interval_skips_timeout() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(10),
+            consecutive_attestation_failures: Some(0),
+            last_successful_attestation: Some(1_700_000_000),
+            maximum_attestation_interval: Some("not_a_number".into()),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Pass);
+    }
+
+    #[test]
+    fn from_push_agent_zero_interval_skips_timeout() {
+        let agent = crate::keylime::models::VerifierAgent {
+            accept_attestations: Some(true),
+            attestation_count: Some(10),
+            consecutive_attestation_failures: Some(0),
+            last_successful_attestation: Some(1_700_000_000),
+            maximum_attestation_interval: Some("0".into()),
+            ..default_verifier()
+        };
+        assert_eq!(AgentState::from_push_agent(&agent), AgentState::Pass);
+    }
+
+    #[test]
+    fn from_operational_state_string_get_quote() {
+        let val = serde_json::json!("get_quote");
+        assert_eq!(
+            AgentState::from_operational_state(&val).unwrap(),
+            AgentState::GetQuote
+        );
+    }
+
+    #[test]
+    fn from_operational_state_string_get_quote_with_space() {
+        let val = serde_json::json!("get quote");
+        assert_eq!(
+            AgentState::from_operational_state(&val).unwrap(),
+            AgentState::GetQuote
+        );
+    }
+
+    #[test]
+    fn from_operational_state_string_provide_v() {
+        let val = serde_json::json!("provide_v");
+        assert_eq!(
+            AgentState::from_operational_state(&val).unwrap(),
+            AgentState::ProvideV
+        );
+    }
+
+    #[test]
+    fn from_operational_state_string_invalid_quote() {
+        let val = serde_json::json!("invalid_quote");
+        assert_eq!(
+            AgentState::from_operational_state(&val).unwrap(),
+            AgentState::InvalidQuote
+        );
+    }
+
+    #[test]
+    fn from_operational_state_string_tenant_failed() {
+        let val = serde_json::json!("tenant_failed");
+        assert_eq!(
+            AgentState::from_operational_state(&val).unwrap(),
+            AgentState::TenantFailed
+        );
+    }
+
+    #[test]
+    fn from_operational_state_unknown_string_is_err() {
+        let val = serde_json::json!("bogus");
+        assert!(AgentState::from_operational_state(&val).is_err());
+    }
+
+    #[test]
+    fn from_operational_state_unknown_integer_is_err() {
+        let val = serde_json::json!(99);
+        assert!(AgentState::from_operational_state(&val).is_err());
+    }
+
+    #[test]
+    fn from_operational_state_non_number_non_string_is_err() {
+        let val = serde_json::json!(null);
+        assert!(AgentState::from_operational_state(&val).is_err());
+    }
+
+    #[test]
     fn timeout_state_filter_matches_serialized_form() {
         let state = AgentState::Timeout;
         let serialized = serde_json::to_string(&state).unwrap();

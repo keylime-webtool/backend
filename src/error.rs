@@ -164,6 +164,23 @@ mod tests {
     }
 
     #[test]
+    fn keylime_api_returns_502() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err: reqwest::Error = rt
+            .block_on(async {
+                reqwest::Client::new()
+                    .get("http://127.0.0.1:1/unreachable")
+                    .send()
+                    .await
+            })
+            .unwrap_err();
+        assert_eq!(
+            status_of(AppError::KeylimeApi(err)),
+            StatusCode::BAD_GATEWAY
+        );
+    }
+
+    #[test]
     fn error_response_body_has_success_false() {
         let resp = AppError::NotFound("agent".into()).into_response();
         let (_, body) = resp.into_parts();
