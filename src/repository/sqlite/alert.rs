@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::models::alert::{seed_alerts, Alert, AlertSummary};
@@ -78,7 +78,9 @@ impl AlertRepository for SqliteAlertRepository {
             sql.push_str(" AND state = ?");
         }
 
-        let mut query = sqlx::query(&sql);
+        // Audited: `sql` is composed solely of static fragments; all user
+        // input is passed through `?` bind parameters below.
+        let mut query = sqlx::query(AssertSqlSafe(sql.clone()));
         if let Some(sev) = severity {
             query = query.bind(sev);
         }
@@ -118,7 +120,9 @@ impl AlertRepository for SqliteAlertRepository {
                     AND state NOT IN ('resolved', 'dismissed')) AS active_warnings
             FROM alerts {mock_filter}",
         );
-        let row = sqlx::query(&sql).fetch_one(&self.pool).await;
+        // Audited: only the static `mock_filter` fragment is interpolated;
+        // no user input is embedded in the SQL string.
+        let row = sqlx::query(AssertSqlSafe(sql)).fetch_one(&self.pool).await;
 
         match row {
             Ok(r) => {

@@ -21,7 +21,7 @@ tokio-rustls = "0.26"
 rustls-pki-types = "1.9"
 
 # Database
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "sqlite", "chrono", "uuid"] }
 redis = { version = "0.27", features = ["aio", "tokio-comp"] }
 
 # Authentication

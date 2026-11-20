@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Row, SqlitePool};
 
 use crate::audit::logger::{AuditEntry, AuditLogger, AuditSeverity};
 use crate::error::{AppError, AppResult};
@@ -101,7 +101,9 @@ impl AuditRepository for SqliteAuditRepository {
 
         sql.push_str(" ORDER BY id ASC");
 
-        let mut query = sqlx::query(&sql);
+        // Audited: `sql` is composed solely of static fragments; all filter
+        // values are passed through `?` bind parameters below.
+        let mut query = sqlx::query(AssertSqlSafe(sql.clone()));
         for bind in &binds {
             query = query.bind(bind);
         }
