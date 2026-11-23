@@ -28,4 +28,22 @@
 # 3. The direct rand dependency (0.9.x) is not affected.
 #
 # Re-evaluate when sqlx/openidconnect release versions that depend on rand 0.9+.
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0097"]
+#
+# RUSTSEC-2026-0543: chrono is unmaintained
+#
+# Accepted because:
+# 1. This is an informational advisory (unmaintained), not a vulnerability:
+#    no security defect is reported and no patched version exists.
+# 2. chrono cannot be removed from the dependency tree yet — it is a hard
+#    transitive requirement of sqlx 0.9.1 (sqlite/postgres/mysql drivers),
+#    openidconnect 4.1.0, oauth2 5.0.0 and serde_with, all at their latest
+#    stable versions. Migrating this project's direct chrono usage to
+#    jiff/time would not silence the advisory while those crates still
+#    depend on chrono.
+# 3. chrono's date/time parsing here operates on trusted input (database
+#    rows and RFC 3339 timestamps produced by this backend), not on
+#    untrusted user-supplied strings.
+#
+# Re-evaluate when sqlx/openidconnect migrate off chrono, then move the
+# direct dependency to jiff or time.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0097", "RUSTSEC-2026-0543"]
