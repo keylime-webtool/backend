@@ -1,18 +1,19 @@
 ## Pending Implementation -- Keylime Webtool Backend
 
-### Current Status: ~69% of route handlers fully implemented (54/78)
+### Current Status: ~73% of route handlers fully implemented (57/78)
 
 Of the 78 HTTP route handlers registered in `src/api/routes.rs`:
 
-- **54 fully implemented**
-- **20 stubs** returning `500 not implemented` (auth, policy CRUD, incidents, audit API, alert notifications/thresholds, compliance export)
-- **4 placeholders** returning valid JSON with `"status": "not_configured"` (see section 7)
-- **1 WebSocket handler** that is an echo-only skeleton (section 8)
+- **57 fully implemented**
+- **17 stubs** returning `500 not implemented` (auth, policy CRUD, incidents, alert notifications/thresholds, compliance export)
+- **4 placeholders** returning valid JSON with `"status": "not_configured"` (see section 6)
+- **1 WebSocket handler** that is an echo-only skeleton (section 7)
 
 Infrastructure wiring is done: repository traits (#79), SQLite persistence (#80),
-Redis cache, and the background observation loop (#87) are all live in `AppState`
-(`src/state.rs:24-35`) and `main.rs` (`src/main.rs:69-121`). The remaining work is
-auth enforcement, repository-layer stubs, and the feature handlers that depend on them.
+Redis cache, the background observation loop (#87), and the audit recording
+service are all live in `AppState` (`src/state.rs:24-35`) and `main.rs`
+(`src/main.rs:69-121`). The remaining work is auth enforcement,
+repository-layer stubs, and the feature handlers that depend on them.
 
 Last refreshed: 2026-11-24 (at PR #158; previous refresh was PR #22).
 
@@ -35,6 +36,19 @@ Last refreshed: 2026-11-24 (at PR #158; previous refresh was PR #22).
   PEM/DER download routes (`src/keylime/cert_parser.rs`, `src/api/handlers/certificates.rs`)
 - **Policy impact analysis** (FR-038) — implemented at `src/api/handlers/policies.rs:186`,
   unlike the CRUD handlers around it
+- **Audit Log API** (FR-042/043/061) — the 3 audit handlers are wired to the
+  existing `AuditRepository` (`src/api/handlers/audit.rs`): filterable/paginated
+  event list, hash-chain verification (409 + broken entry id on tamper), and
+  CSV/JSON export with attachment headers. A new `AuditService`
+  (`src/audit/service.rs`) owns the chain tip, resumes it from the persisted
+  SQLite tip on startup, and records entries from mutating handlers (settings
+  updates → `config_change`, alert lifecycle actions → `alert_action`,
+  SSH probes → `integration_check`; actor is `"system"` until SR-001 auth lands).
+  Known frontend delta (SDD is the contract): `keylime-webtool-frontend` calls
+  `GET /audit-log/verify-chain`, `POST /audit-log/export`, and uses
+  `from_date`/`to_date`/`per_page` — the backend serves `GET /verify`,
+  `GET /export`, `start`/`end`, `page_size` per SDD section 3.4; the frontend
+  needs a follow-up alignment
 - Circuit-breaker state on the Verifier client, push-mode/Timeout agent states,
   unified performance summary endpoint (#94)
 
@@ -166,23 +180,7 @@ Repository-layer state (blocks the handlers above):
 
 ---
 
-### 5. Audit Log API (3 stub handlers)
-
-| Handler | File | Requirement |
-|---|---|---|
-| `list_audit_events()` | `src/api/handlers/audit.rs:26` | FR-042/043 |
-| `verify_chain()` | `src/api/handlers/audit.rs:32` | FR-061 |
-| `export_audit_log()` | `src/api/handlers/audit.rs:40` | FR-042 |
-
-The underlying `AuditRepository` (append/query/verify_chain/export, with hash-chained
-tamper detection) **is** implemented in both in-memory and SQLite variants
-(`src/repository/audit.rs`, `src/repository/sqlite/audit.rs`) and is wired into
-`AppState` — the handlers just don't call it. Additionally, no production code path
-currently appends audit entries.
-
----
-
-### 6. Compliance Export (1 stub handler)
+### 5. Compliance Export (1 stub handler)
 
 | Handler | File | Requirement |
 |---|---|---|
@@ -190,7 +188,7 @@ currently appends audit entries.
 
 ---
 
-### 7. Placeholder Handlers (return `not_configured`, not errors)
+### 6. Placeholder Handlers (return `not_configured`, not errors)
 
 These return valid JSON with placeholder data:
 
@@ -204,7 +202,7 @@ These return valid JSON with placeholder data:
 
 ---
 
-### 8. WebSocket (echo skeleton only)
+### 7. WebSocket (echo skeleton only)
 
 `src/api/ws.rs:20-27` has 4 TODOs:
 
@@ -218,7 +216,7 @@ connections, <100ms p99) and NFR-021 (real-time UI updates).
 
 ---
 
-### 9. Routes & Infrastructure TODOs
+### 8. Routes & Infrastructure TODOs
 
 - **Prometheus `/metrics` endpoint** -- TODO at `src/api/routes.rs:17` (FR-063)
 - **CORS / tracing / rate-limiting layers** -- TODO at `src/api/routes.rs:18`
@@ -247,14 +245,12 @@ connections, <100ms p99) and NFR-021 (real-time UI updates).
    `service_down` and attestation-failure alerts in `AlertRepository` (FR-046/047/049)
 5. **Alert notifications & thresholds** — `list_notifications` + `update_thresholds`
    handlers with threshold persistence (FR-009/011)
-6. **Audit API** — wire the 3 handlers to the existing `AuditRepository` and start
-   appending entries from mutating operations (FR-042/043/061)
-7. **Incident correlation** — repository `correlate_incidents`/`get_incident`/`get_pipeline`,
+6. **Incident correlation** — repository `correlate_incidents`/`get_incident`/`get_pipeline`,
    a writer for the `correlated_incidents` table, then the 3 incident handlers
    (FR-026/027/028)
-8. **WebSocket event streaming** — auth, subscriptions, heartbeat; includes alert push
+7. **WebSocket event streaming** — auth, subscriptions, heartbeat; includes alert push
    (NFR-005/021)
-9. **Remaining stubs & placeholders** — compliance export (FR-060), `database_metrics`
+8. **Remaining stubs & placeholders** — compliance export (FR-060), `database_metrics`
    (FR-065), durable backends / revocation channels / SIEM status (FR-058/046/063)
-10. **Routes & infra polish** — `/metrics`, CORS/tracing/rate limiting, TimescaleDB
-    decision, HSM/Vault key support
+9. **Routes & infra polish** — `/metrics`, CORS/tracing/rate limiting, TimescaleDB
+   decision, HSM/Vault key support

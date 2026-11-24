@@ -5,10 +5,22 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::api::response::ApiResponse;
+use crate::audit::logger::{AuditEntryParams, AuditSeverity};
 use crate::config::{KeylimeConfig, MtlsConfig};
 use crate::error::{AppError, AppResult};
 use crate::keylime::client::KeylimeClient;
 use crate::state::AppState;
+
+/// Append a `config_change` audit entry for a successful settings update.
+///
+/// Audit failures are logged but never fail the user-facing operation.
+async fn record_config_change(state: &AppState, resource: &str) {
+    let params =
+        AuditEntryParams::system(AuditSeverity::Info, "config_change", resource, "SUCCESS");
+    if let Err(e) = state.audit.record(params).await {
+        tracing::warn!("failed to record audit entry for {resource}: {e}");
+    }
+}
 
 /// Response/request body for Keylime connection settings.
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,6 +78,7 @@ pub async fn update_keylime(
     }
 
     state.persist_settings();
+    record_config_change(&state, "settings/keylime").await;
 
     let settings = KeylimeSettings {
         verifier_url: body.verifier_url,
@@ -188,6 +201,7 @@ pub async fn update_certificates(
     let new_client = KeylimeClient::new(config)?;
     state.swap_keylime(new_client);
     state.persist_settings();
+    record_config_change(&state, "settings/certificates").await;
 
     let kl = state.keylime();
     let result = match kl.mtls_config() {
@@ -226,6 +240,78 @@ pub(crate) fn resolve_mtls_fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::KeylimeConfig;
+    use crate::keylime::client::KeylimeClient;
+    use crate::repository::audit::AuditFilter;
+    use crate::repository::{InMemoryCacheBackend, Repositories};
+    use std::sync::Arc;
+
+    fn test_state() -> AppState {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        let repos = Repositories::in_memory();
+        AppState::new(
+            client,
+            repos.alert,
+            repos.attestation,
+            repos.policy,
+            repos.audit,
+            Arc::new(InMemoryCacheBackend::new()),
+            None,
+            false,
+        )
+    }
+
+    #[tokio::test]
+    async fn update_keylime_records_config_change_audit_entry() {
+        let state = test_state();
+        let body = KeylimeSettings {
+            verifier_url: "http://localhost:4000".into(),
+            registrar_url: "http://localhost:4001".into(),
+            seed_mock_data: None,
+        };
+
+        let _ = update_keylime(State(state.clone()), Json(body))
+            .await
+            .unwrap();
+
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].action, "config_change");
+        assert_eq!(entries[0].resource, "settings/keylime");
+        assert_eq!(entries[0].result, "SUCCESS");
+    }
+
+    #[tokio::test]
+    async fn rejected_update_records_no_audit_entry() {
+        let state = test_state();
+        let body = KeylimeSettings {
+            verifier_url: String::new(),
+            registrar_url: "http://localhost:4001".into(),
+            seed_mock_data: None,
+        };
+
+        let result = update_keylime(State(state.clone()), Json(body)).await;
+
+        assert!(result.is_err());
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert!(entries.is_empty());
+    }
 
     #[test]
     fn validate_urls_ok() {

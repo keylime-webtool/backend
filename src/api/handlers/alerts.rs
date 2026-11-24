@@ -4,6 +4,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::response::{ApiResponse, PaginatedResponse};
+use crate::audit::logger::{AuditEntryParams, AuditSeverity};
 use crate::error::{AppError, AppResult};
 use crate::models::alert::{Alert, AlertSummary};
 use crate::state::AppState;
@@ -14,6 +15,17 @@ pub struct AlertListParams {
     pub state: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
+}
+
+/// Append an `alert_action` audit entry for a successful lifecycle change.
+///
+/// Audit failures are logged but never fail the user-facing operation.
+async fn record_alert_action(state: &AppState, alert_id: Uuid, result: &str) {
+    let resource = alert_id.to_string();
+    let params = AuditEntryParams::system(AuditSeverity::Info, "alert_action", &resource, result);
+    if let Err(e) = state.audit.record(params).await {
+        tracing::warn!("failed to record audit entry for alert {alert_id}: {e}");
+    }
 }
 
 /// GET /api/alerts -- Alert management dashboard (FR-047).
@@ -81,6 +93,7 @@ pub async fn acknowledge_alert(
         .acknowledge(id)
         .await
         .map_err(AppError::BadRequest)?;
+    record_alert_action(&state, id, "acknowledged").await;
     Ok(Json(ApiResponse::ok(())))
 }
 
@@ -100,6 +113,7 @@ pub async fn investigate_alert(
         .investigate(id, body.assigned_to)
         .await
         .map_err(AppError::BadRequest)?;
+    record_alert_action(&state, id, "investigated").await;
     Ok(Json(ApiResponse::ok(())))
 }
 
@@ -119,6 +133,7 @@ pub async fn resolve_alert(
         .resolve(id, body.resolution)
         .await
         .map_err(AppError::BadRequest)?;
+    record_alert_action(&state, id, "resolved").await;
     Ok(Json(ApiResponse::ok(())))
 }
 
@@ -132,6 +147,7 @@ pub async fn dismiss_alert(
         .dismiss(id)
         .await
         .map_err(AppError::BadRequest)?;
+    record_alert_action(&state, id, "dismissed").await;
     Ok(Json(ApiResponse::ok(())))
 }
 
@@ -145,6 +161,7 @@ pub async fn escalate_alert(
         .escalate(id)
         .await
         .map_err(AppError::BadRequest)?;
+    record_alert_action(&state, id, "escalated").await;
     Ok(Json(ApiResponse::ok(())))
 }
 
@@ -169,4 +186,86 @@ pub async fn update_thresholds(
     Json(_body): Json<ThresholdsConfig>,
 ) -> AppResult<Json<ApiResponse<()>>> {
     Err(AppError::Internal("not implemented".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::KeylimeConfig;
+    use crate::keylime::client::KeylimeClient;
+    use crate::repository::audit::AuditFilter;
+    use crate::repository::{InMemoryCacheBackend, Repositories};
+    use std::sync::Arc;
+
+    fn test_state() -> AppState {
+        let config = KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let client = KeylimeClient::new(config).unwrap();
+        let repos = Repositories::in_memory();
+        AppState::new(
+            client,
+            repos.alert,
+            repos.attestation,
+            repos.policy,
+            repos.audit,
+            Arc::new(InMemoryCacheBackend::new()),
+            None,
+            false,
+        )
+    }
+
+    #[tokio::test]
+    async fn acknowledge_records_alert_action_audit_entry() {
+        let state = test_state();
+        let id = state
+            .alert_repo
+            .list(None, Some("new"), true)
+            .await
+            .first()
+            .unwrap()
+            .id;
+
+        let _ = acknowledge_alert(State(state.clone()), Path(id))
+            .await
+            .unwrap();
+
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].action, "alert_action");
+        assert_eq!(entries[0].resource, id.to_string());
+        assert_eq!(entries[0].result, "acknowledged");
+        assert_eq!(entries[0].actor, "system");
+    }
+
+    #[tokio::test]
+    async fn failed_action_records_no_audit_entry() {
+        let state = test_state();
+        let id = state
+            .alert_repo
+            .list(None, Some("acknowledged"), true)
+            .await
+            .first()
+            .unwrap()
+            .id;
+
+        let result = acknowledge_alert(State(state.clone()), Path(id)).await;
+
+        assert!(result.is_err());
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert!(entries.is_empty());
+    }
 }
