@@ -201,10 +201,12 @@ curl http://localhost:8080/api/certificates/$AGENT_ID/ek | jq
 curl "http://localhost:8080/api/certificates/$AGENT_ID/ek?format=pem"      # PEM export
 curl http://localhost:8080/api/certificates/expiry | jq                    # expiry summary
 
-# Audit log (stubs -- not yet implemented)
+# Audit log (filterable list, hash-chain verification, CSV/JSON export)
 curl http://localhost:8080/api/audit-log | jq
-curl http://localhost:8080/api/audit-log/verify | jq
-curl http://localhost:8080/api/audit-log/export | jq
+curl "http://localhost:8080/api/audit-log?action=config_change&page=1&page_size=25" | jq
+curl http://localhost:8080/api/audit-log/verify | jq                       # 409 + broken entry id on tamper
+curl "http://localhost:8080/api/audit-log/export?format=csv" -o audit-log.csv
+curl "http://localhost:8080/api/audit-log/export?format=json" | jq
 
 # Settings
 curl http://localhost:8080/api/settings/keylime | jq

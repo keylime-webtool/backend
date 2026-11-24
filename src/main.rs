@@ -7,6 +7,7 @@ use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use keylime_webtool_backend::api::routes;
+use keylime_webtool_backend::audit::service::AuditService;
 use keylime_webtool_backend::config::KeylimeConfig;
 use keylime_webtool_backend::keylime::client::KeylimeClient;
 use keylime_webtool_backend::repository::{
@@ -101,6 +102,10 @@ async fn main() -> anyhow::Result<()> {
         Err(_) => Arc::new(InMemoryCacheBackend::new()),
     };
 
+    // Resume the audit hash chain from the persisted tip so entries
+    // recorded before a restart keep linking (FR-061, SR-015).
+    let audit_service = Arc::new(AuditService::resume(repos.audit.clone()).await?);
+
     let state = AppState::new(
         keylime_client,
         repos.alert,
@@ -110,7 +115,8 @@ async fn main() -> anyhow::Result<()> {
         cache,
         config_path,
         seed_mock_data,
-    );
+    )
+    .with_audit_service(audit_service);
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
 

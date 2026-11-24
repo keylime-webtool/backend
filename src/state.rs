@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
+use crate::audit::service::AuditService;
 use crate::config::SshConfig;
 use crate::keylime::client::KeylimeClient;
 use crate::repository::{
@@ -27,6 +28,7 @@ pub struct AppState {
     pub attestation_repo: Arc<dyn AttestationRepository>,
     pub policy_repo: Arc<dyn PolicyRepository>,
     pub audit_repo: Arc<dyn AuditRepository>,
+    pub audit: Arc<AuditService>,
     pub cache: Arc<dyn CacheBackend>,
     config_path: Option<PathBuf>,
     seed_mock_data: Arc<AtomicBool>,
@@ -51,6 +53,7 @@ impl AppState {
             alert_repo,
             attestation_repo,
             policy_repo,
+            audit: Arc::new(AuditService::new(audit_repo.clone())),
             audit_repo,
             cache,
             config_path,
@@ -62,6 +65,13 @@ impl AppState {
 
     pub fn with_ssh_config(mut self, ssh_config: SshConfig) -> Self {
         self.ssh_config = Arc::new(ssh_config);
+        self
+    }
+
+    /// Replace the default audit service with one resumed from the
+    /// persisted chain tip (used at production startup).
+    pub fn with_audit_service(mut self, service: Arc<AuditService>) -> Self {
+        self.audit = service;
         self
     }
 

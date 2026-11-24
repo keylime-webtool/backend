@@ -56,6 +56,27 @@ pub struct AuditEntryParams<'a> {
     pub result: &'a str,
 }
 
+impl<'a> AuditEntryParams<'a> {
+    /// Parameters for an action triggered by the backend itself.
+    // TODO(SR-001): use JWT claims actor once require_auth is wired
+    pub fn system(
+        severity: AuditSeverity,
+        action: &'a str,
+        resource: &'a str,
+        result: &'a str,
+    ) -> Self {
+        Self {
+            severity,
+            actor: "system",
+            action,
+            resource,
+            source_ip: "unknown",
+            user_agent: None,
+            result,
+        }
+    }
+}
+
 /// Audit logger that maintains the hash chain.
 pub struct AuditLogger {
     last_hash: String,

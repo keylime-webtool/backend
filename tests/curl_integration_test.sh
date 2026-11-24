@@ -304,6 +304,42 @@ run_stub_test() {
     fi
 }
 
+# Run a CSV export test: expects HTTP 200, a text/csv content type, an
+# attachment disposition, and the audit CSV header row.
+#   $1 = test name
+#   $2 = URL path
+run_csv_export_test() {
+    local name="$1"
+    local url="$2"
+
+    TOTAL=$((TOTAL + 1))
+    printf "  %-55s " "$name"
+
+    local header_file body content_type disposition first_line
+    header_file=$(mktemp)
+    body=$(curl -sf -D "$header_file" "${BACKEND_URL}${url}" 2>&1) || {
+        rm -f "$header_file"
+        red "FAIL (HTTP error)"
+        FAILED=$((FAILED + 1))
+        return
+    }
+
+    content_type=$(grep -i '^content-type:' "$header_file" | tr -d '\r' | cut -d' ' -f2)
+    disposition=$(grep -i '^content-disposition:' "$header_file" | tr -d '\r')
+    first_line=$(printf '%s\n' "$body" | head -n 1)
+    rm -f "$header_file"
+
+    if [ "${content_type#text/csv}" != "$content_type" ] \
+        && [ "${disposition#*attachment}" != "$disposition" ] \
+        && [ "$first_line" = "id,timestamp,severity,actor,action,resource,source_ip,user_agent,result,previous_hash,entry_hash" ]; then
+        green "PASS"
+        PASSED=$((PASSED + 1))
+    else
+        red "FAIL (content-type='${content_type}', first_line='${first_line}')"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 # ── main ─────────────────────────────────────────────────────────────────
 
 MOCKOON_VERIFIER_PID=""
@@ -548,12 +584,19 @@ run_stub_test "Update thresholds"    "PUT"  "/api/alerts/thresholds" \
     '{"attestation_success_rate":0.95}'
 echo ""
 
-# -- Audit log endpoints (stubs) --
+# -- Audit log endpoints --
 echo "  Audit Log"
 echo "  ---------"
-run_stub_test "List audit events"    "GET"  "/api/audit-log"
-run_stub_test "Verify audit chain"   "GET"  "/api/audit-log/verify"
-run_stub_test "Export audit log"     "GET"  "/api/audit-log/export"
+run_test "List audit events"                  "/api/audit-log"
+run_test "  filter by action"                 "/api/audit-log?action=alert_action" \
+    "(.data.total_items > 0)" "true"
+run_test "  pagination"                       "/api/audit-log?page=1&page_size=2" \
+    "((.data.items | length) <= 2)" "true"
+run_test "Verify audit chain"                 "/api/audit-log/verify" \
+    ".data.verified" "true"
+run_test "Export audit log (json)"            "/api/audit-log/export?format=json" \
+    "(length > 0)" "true"
+run_csv_export_test "Export audit log (csv)"  "/api/audit-log/export?format=csv"
 echo ""
 
 # -- Settings endpoints --

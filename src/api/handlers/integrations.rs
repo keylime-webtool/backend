@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::api::response::ApiResponse;
+use crate::audit::logger::{AuditEntryParams, AuditSeverity};
 use crate::auth::jwt::Claims;
 use crate::auth::rbac::Permission;
 use crate::error::{AppError, AppResult};
@@ -153,6 +154,14 @@ pub async fn ssh_check(
     .unwrap_or(false);
     let latency = start.elapsed().as_millis() as u64;
 
+    record_integration_check(
+        &state,
+        &service_name,
+        reachable,
+        if reachable { Some(latency) } else { None },
+    )
+    .await;
+
     Ok(Json(ApiResponse::ok(SshCheckResult {
         service: service_name,
         ssh_host,
@@ -160,6 +169,31 @@ pub async fn ssh_check(
         reachable,
         latency_ms: if reachable { Some(latency) } else { None },
     })))
+}
+
+/// Append an `integration_check` audit entry for an SSH probe.
+///
+/// Audit failures are logged but never fail the user-facing operation.
+async fn record_integration_check(
+    state: &AppState,
+    service_name: &str,
+    reachable: bool,
+    latency_ms: Option<u64>,
+) {
+    let result = match (reachable, latency_ms) {
+        (true, Some(ms)) => format!("SUCCESS ({ms}ms)"),
+        (true, None) => "SUCCESS".to_string(),
+        (false, _) => "UNREACHABLE".to_string(),
+    };
+    let severity = if reachable {
+        AuditSeverity::Info
+    } else {
+        AuditSeverity::Warning
+    };
+    let params = AuditEntryParams::system(severity, "integration_check", service_name, &result);
+    if let Err(e) = state.audit.record(params).await {
+        tracing::warn!("failed to record audit entry for ssh-check {service_name}: {e}");
+    }
 }
 
 /// GET /api/integrations/durable -- Durable attestation backend status (FR-058).
@@ -207,7 +241,10 @@ mod tests {
     use super::*;
     use crate::auth::rbac::Role;
     use crate::config::SshConfig;
+    use crate::repository::audit::AuditFilter;
+    use crate::repository::{InMemoryCacheBackend, Repositories};
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     #[test]
     fn extract_host_from_https_url() {
@@ -370,5 +407,80 @@ mod tests {
                 .unwrap_or(cfg.default_port),
             22
         );
+    }
+
+    #[tokio::test]
+    async fn ssh_check_records_integration_check_audit_entry() {
+        let state = test_state_with_ssh();
+        let reachable_probe = ssh_check(State(state.clone()), Path("verifier".to_string()))
+            .await
+            .unwrap();
+
+        assert_eq!(reachable_probe.0.data.unwrap().service, "verifier");
+
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].action, "integration_check");
+        assert_eq!(entries[0].resource, "verifier");
+        assert!(
+            entries[0].result == "UNREACHABLE" || entries[0].result.starts_with("SUCCESS"),
+            "unexpected result: {}",
+            entries[0].result
+        );
+    }
+
+    #[tokio::test]
+    async fn ssh_check_disabled_records_no_audit_entry() {
+        let state = test_state_with_ssh();
+        let state = AppState::with_ssh_config(
+            state,
+            SshConfig {
+                enabled: false,
+                default_port: 22,
+                ports: HashMap::new(),
+            },
+        );
+
+        let result = ssh_check(State(state.clone()), Path("verifier".to_string())).await;
+
+        assert!(result.is_err());
+        let entries = state
+            .audit_repo
+            .query(&AuditFilter::default())
+            .await
+            .unwrap();
+        assert!(entries.is_empty());
+    }
+
+    fn test_state_with_ssh() -> AppState {
+        let config = crate::config::KeylimeConfig {
+            verifier_url: "http://localhost:3000".into(),
+            registrar_url: "http://localhost:3001".into(),
+            mtls: None,
+            timeout_secs: 5,
+            observation_interval_secs: 30,
+            circuit_breaker: Default::default(),
+        };
+        let client = crate::keylime::client::KeylimeClient::new(config).unwrap();
+        let repos = Repositories::in_memory();
+        AppState::new(
+            client,
+            repos.alert,
+            repos.attestation,
+            repos.policy,
+            repos.audit,
+            Arc::new(InMemoryCacheBackend::new()),
+            None,
+            false,
+        )
+        .with_ssh_config(SshConfig {
+            enabled: true,
+            default_port: 22,
+            ports: HashMap::new(),
+        })
     }
 }
