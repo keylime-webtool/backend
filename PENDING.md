@@ -1,49 +1,86 @@
 ## Pending Implementation -- Keylime Webtool Backend
 
-### Current Status: ~85% of backend functions implemented (61/71 handlers)
+### Current Status: ~69% of route handlers fully implemented (54/78)
+
+Of the 78 HTTP route handlers registered in `src/api/routes.rs`:
+
+- **54 fully implemented**
+- **20 stubs** returning `500 not implemented` (auth, policy CRUD, incidents, audit API, alert notifications/thresholds, compliance export)
+- **4 placeholders** returning valid JSON with `"status": "not_configured"` (see section 7)
+- **1 WebSocket handler** that is an echo-only skeleton (section 8)
+
+Infrastructure wiring is done: repository traits (#79), SQLite persistence (#80),
+Redis cache, and the background observation loop (#87) are all live in `AppState`
+(`src/state.rs:24-35`) and `main.rs` (`src/main.rs:69-121`). The remaining work is
+auth enforcement, repository-layer stubs, and the feature handlers that depend on them.
+
+Last refreshed: 2026-11-24 (at PR #158; previous refresh was PR #22).
 
 ---
 
-### 1. Infrastructure Wiring (foundational -- blocks many features)
+### 0. Shipped since the last refresh (for context, no action needed)
 
-These are not yet connected in `AppState` or `main.rs`, even though modules exist:
-
-- **Database (TimescaleDB)** -- `src/storage/db.rs` has connection pool setup but no migrations directory, and DB is not wired into `AppState`
-- **Redis Cache** -- `src/storage/cache.rs` is fully implemented but not wired into `AppState`
-- **Session Store** -- `src/auth/session.rs` is implemented but not wired
-- **Audit Logger** -- `src/audit/logger.rs` is implemented (hash chain, tamper detection) but not wired
-- **Middleware** -- `src/api/middleware.rs` has TODOs for JWT secret retrieval and session revocation checking
-- **CORS / Tracing / Rate Limiting** -- noted as TODO in `src/api/routes.rs:14-15` (needs `tower-http`)
-- **Prometheus `/metrics` endpoint** -- TODO in `src/api/routes.rs:14`
-- **mTLS client** -- `src/keylime/client.rs:98` has a TODO for building the mTLS reqwest client when `config.mtls` is set
+- **Repository abstraction + SQLite backend** (#79, #80) — traits in `src/repository/`,
+  SQLite implementations in `src/repository/sqlite/`, selected via `DATABASE_URL`,
+  in-memory fallback when unset; schema auto-creates on startup; alert seeding (#93)
+- **Redis cache wired** — via `REDIS_URL` with in-memory fallback (`src/main.rs:90-102`)
+- **Background observation loop** (FR-087, #87) — records attestation observations every
+  tick plus a 10-tick fleet reconciliation sweep (`src/tasks/observations.rs`)
+- **mTLS client** (#34) — reqwest client built with client identity + CA cert
+  (`src/keylime/client.rs:96-138`); rejects `pkcs11://`/`vault://` key URIs (SR-005/006 caveat below)
+- **Settings API + TOML persistence** (#36) — runtime Verifier/Registrar URLs and mTLS
+  config via `/api/settings/*`, persisted to a TOML config file (`src/api/handlers/settings.rs`)
+- **SSH reachability probe** (FR-086, #69) — `/api/integrations/ssh-check/{service_name}`
+- **X.509 certificate parsing** (#73) — subject/issuer/validity/SAN parsing plus
+  PEM/DER download routes (`src/keylime/cert_parser.rs`, `src/api/handlers/certificates.rs`)
+- **Policy impact analysis** (FR-038) — implemented at `src/api/handlers/policies.rs:186`,
+  unlike the CRUD handlers around it
+- Circuit-breaker state on the Verifier client, push-mode/Timeout agent states,
+  unified performance summary endpoint (#94)
 
 ---
 
-### 2. Authentication (4 stub handlers + 3 OIDC TODOs)
+### 1. Authentication & Authorization (4 stub handlers + enforcement gap)
 
 | Handler | File | Requirement |
 |---|---|---|
-| `login()` | `auth.rs:8` | SR-001 -- OIDC login flow |
-| `callback()` | `auth.rs:25` | SR-001/010 -- Auth code -> JWT |
-| `refresh_token()` | `auth.rs:38` | SR-010 -- JWT refresh rotation |
-| `logout()` | `auth.rs:43` | SR-011 -- Session revocation |
+| `login()` | `src/api/handlers/auth.rs:10` | SR-001 -- OIDC login flow |
+| `callback()` | `src/api/handlers/auth.rs:30` | SR-001/010 -- Auth code -> JWT |
+| `refresh_token()` | `src/api/handlers/auth.rs:42` | SR-010 -- JWT refresh rotation |
+| `logout()` | `src/api/handlers/auth.rs:48` | SR-011 -- Session revocation |
 
 Plus 3 TODOs in `src/auth/oidc.rs:19-21` (authorization URL, code exchange, userinfo/role mapping).
 
+**Enforcement gap (SR-001/010/011):** `require_auth`/`require_admin` middleware exists in
+`src/api/middleware.rs` but is never applied to any route group. The only guarded route is
+`/api/integrations/ssh-check/{service_name}` via `require_write`
+(`src/api/routes.rs:211-214`). All other endpoints — including mutating ones like policy
+updates and alert actions — are currently unauthenticated.
+
+Related blockers:
+
+- JWT secret is hardcoded to `b"placeholder"` (`src/api/middleware.rs:19-20`, TODO: get secret from app state)
+- `SessionStore` (`src/auth/session.rs`) is fully implemented but wired nowhere —
+  `src/api/middleware.rs:23` still has the TODO for session revocation checking
+
 ---
 
-### 3. Alert Management (2 stub handlers + pending alert generation)
+### 2. Alert Management (2 stub handlers + missing automatic generation)
 
-Alert lifecycle handlers are now implemented with an in-memory `AlertStore` (seeded with sample alerts). The remaining stubs and pending work:
+Alert lifecycle (list/get/acknowledge/investigate/resolve/dismiss/escalate) is implemented
+against `AlertRepository` (SQLite with `seed_if_empty`, or in-memory). Remaining work:
 
-| Handler | File | Requirement | Status |
-|---|---|---|---|
-| `list_notifications()` | `alerts.rs` | FR-009 -- in-app notification bell with badge count | Stub |
-| `update_thresholds()` | `alerts.rs` | FR-011 -- configurable alert thresholds (Admin only) | Stub |
+| Handler | File | Requirement |
+|---|---|---|
+| `list_notifications()` | `src/api/handlers/alerts.rs:155` | FR-009 -- in-app notification bell with badge count |
+| `update_thresholds()` | `src/api/handlers/alerts.rs:171` | FR-011 -- configurable alert thresholds (Admin only) |
 
 #### Pending: Automatic alert generation for down systems
 
-No alerts are currently raised automatically. A background health-check task is needed to probe service availability and create alerts in the `AlertStore`. Required scenarios:
+No alerts are currently raised automatically. `ServiceDown` exists only as an enum variant
+(`src/models/alert.rs:33`) — no code path constructs or raises it. The background
+observation loop (`src/tasks/observations.rs`) records attestation observations but never
+creates alerts. Required scenarios:
 
 | Alert Condition | Alert Type | Severity | Requirement |
 |---|---|---|---|
@@ -54,13 +91,16 @@ No alerts are currently raised automatically. A background health-check task is 
 | **Webhook delivery failure** -- revocation notification webhook returns error / times out | `service_down` | WARNING | FR-046 |
 
 Implementation approach:
-- `tokio::spawn` a background task at startup that periodically probes Verifier/Registrar health endpoints
-- On failure, insert a `service_down` alert into the `AlertStore`; on recovery, auto-resolve it (FR-049)
-- For **backend unreachable**, detection must happen in the frontend (axios interceptor or WebSocket disconnect handler) since the backend cannot observe its own downtime
+
+- Extend the existing background observation loop (or the Verifier circuit breaker) to
+  detect Verifier/Registrar unreachability and insert/resolve `service_down` alerts in
+  `AlertRepository` (FR-049 auto-resolve on recovery)
+- For **backend unreachable**, detection must happen in the frontend (axios interceptor or
+  WebSocket disconnect handler) since the backend cannot observe its own downtime
 
 #### Pending: Alert generation from attestation failures
 
-Alerts should be created automatically when agents fail attestation. This requires:
+Alerts should be created automatically when agents fail attestation:
 
 | Alert Condition | Alert Type | Severity | Requirement |
 |---|---|---|---|
@@ -71,23 +111,58 @@ Alerts should be created automatically when agents fail attestation. This requir
 | Certificate critical expiry (≤7 days) | `cert_expiry` | CRITICAL | FR-051 |
 | PCR value change detected | `pcr_change` | INFO | FR-021/022 |
 
-#### Pending: Alert persistence
+#### Persistence caveat
 
-The current `AlertStore` is in-memory -- all alerts are lost on restart. Needs migration to TimescaleDB (blocked by infrastructure wiring, section 1).
+When `DATABASE_URL` is unset the in-memory `AlertRepository` is used and all alerts are
+lost on restart. With `DATABASE_URL=sqlite:...` alerts persist. The alert thresholds
+themselves have no persistence (blocked by `update_thresholds` stub above).
 
 ---
 
-### 4. Policy Management (6 stub handlers)
+### 3. Policy Management (7 stub handlers + repository-layer stubs)
 
 | Handler | File | Requirement |
 |---|---|---|
-| `create_policy()` | `policies.rs:112` | FR-034 |
-| `update_policy()` | `policies.rs:124` | FR-034/039 |
-| `delete_policy()` | `policies.rs:132` | Admin only |
-| `list_versions()` | `policies.rs:137` | FR-035 -- version history |
-| `diff_versions()` | `policies.rs:142` | FR-035 -- version diff |
-| `rollback_policy()` | `policies.rs:147` | FR-035 -- rollback |
-| `approve_change()` | `policies.rs:192` | FR-039 -- two-person approval |
+| `create_policy()` | `src/api/handlers/policies.rs:147` | FR-034 |
+| `update_policy()` | `src/api/handlers/policies.rs:160` | FR-034/039 |
+| `delete_policy()` | `src/api/handlers/policies.rs:165` | Admin only |
+| `list_versions()` | `src/api/handlers/policies.rs:170` | FR-035 -- version history |
+| `diff_versions()` | `src/api/handlers/policies.rs:175` | FR-035 -- version diff |
+| `rollback_policy()` | `src/api/handlers/policies.rs:182` | FR-035 -- rollback |
+| `approve_change()` | `src/api/handlers/policies.rs:243` | FR-039 -- two-person approval |
+
+Implemented and working: `list_policies`, `get_policy`, `assignment_matrix` (FR-037),
+and `impact_analysis` (FR-038, `policies.rs:186`).
+
+**Blocked by repository-layer stubs** — versioning is not implemented in either backend:
+
+| Repository method | In-memory | SQLite |
+|---|---|---|
+| `list_versions()` | `src/repository/policy.rs:97` | `src/repository/sqlite/policy.rs:178` |
+| `diff()` | `src/repository/policy.rs:101` | `src/repository/sqlite/policy.rs:182` |
+| `rollback()` | `src/repository/policy.rs:105` | `src/repository/sqlite/policy.rs:186` |
+
+Note: these handlers also need to write through to Keylime (`POST/PUT/DELETE` on
+`/v2/allowlists/` and `/v2/mbpolicies/`), not just the local repository, to have real effect.
+
+---
+
+### 4. Attestation Incidents & Pipeline (3 stub handlers + repository-layer stubs)
+
+| Handler | File | Requirement |
+|---|---|---|
+| `list_incidents()` | `src/api/handlers/attestations.rs:299` | FR-026/027 -- correlated incidents |
+| `get_incident()` | `src/api/handlers/attestations.rs:306` | FR-027 -- root cause detail |
+| `rollback_from_incident()` | `src/api/handlers/attestations.rs:311` | FR-028 -- one-click rollback |
+
+Repository-layer state (blocks the handlers above):
+
+- **In-memory** (`src/repository/attestation.rs`): `get_pipeline` (:206),
+  `correlate_incidents` (:223), and `get_incident` (:227) are all stubs
+- **SQLite** (`src/repository/sqlite/attestation.rs`): `get_pipeline` (:141) is a stub;
+  `correlate_incidents` (:161) and `get_incident` (:169) read from the
+  `correlated_incidents` table — but nothing ever writes to that table, since no
+  correlation engine exists yet
 
 ---
 
@@ -95,64 +170,91 @@ The current `AlertStore` is in-memory -- all alerts are lost on restart. Needs m
 
 | Handler | File | Requirement |
 |---|---|---|
-| `list_audit_events()` | `audit.rs:22` | FR-042/043 |
-| `verify_chain()` | `audit.rs:29` | FR-061 |
-| `export_audit_log()` | `audit.rs:34` | FR-042 |
+| `list_audit_events()` | `src/api/handlers/audit.rs:26` | FR-042/043 |
+| `verify_chain()` | `src/api/handlers/audit.rs:32` | FR-061 |
+| `export_audit_log()` | `src/api/handlers/audit.rs:40` | FR-042 |
 
-Note: the underlying `AuditLogger` with hash chain is already implemented -- these handlers just need to call it.
+The underlying `AuditRepository` (append/query/verify_chain/export, with hash-chained
+tamper detection) **is** implemented in both in-memory and SQLite variants
+(`src/repository/audit.rs`, `src/repository/sqlite/audit.rs`) and is wired into
+`AppState` — the handlers just don't call it. Additionally, no production code path
+currently appends audit entries.
 
 ---
 
-### 6. Attestation Incidents (3 stub handlers)
+### 6. Compliance Export (1 stub handler)
 
 | Handler | File | Requirement |
 |---|---|---|
-| `list_incidents()` | `attestations.rs:133` | FR-026/027 -- correlated incidents |
-| `get_incident()` | `attestations.rs:138` | FR-027 -- root cause detail |
-| `rollback_from_incident()` | `attestations.rs:145` | FR-028 -- one-click rollback |
+| `export_report()` | `src/api/handlers/compliance.rs:126` | FR-060 -- PDF/CSV export |
 
 ---
 
-### 7. Remaining Stubs (3 handlers across different areas)
+### 7. Placeholder Handlers (return `not_configured`, not errors)
 
-| Handler | File | Requirement |
-|---|---|---|
-| `renew_certificate()` | `certificates.rs:136` | FR-053 -- cert renewal |
-| `export_report()` | `compliance.rs:112` | FR-060 -- PDF/CSV export |
-| `database_metrics()` | `performance.rs:31` | FR-065 -- DB pool monitoring |
+These return valid JSON with placeholder data:
+
+- `database_metrics()` -- `src/api/handlers/performance.rs:89-98` (FR-065 -- DB pool
+  monitoring; reports zeroed metrics until a real pool is observed)
+- `durable_backends()` -- `src/api/handlers/integrations.rs:166-177` (FR-058). Note the
+  response content is stale: it reports Redis as "integration pending" although the Redis
+  cache is wired via `REDIS_URL`
+- `revocation_channels()` -- `src/api/handlers/integrations.rs:180-194` (FR-046)
+- `siem_status()` -- `src/api/handlers/integrations.rs:197-203` (FR-063)
 
 ---
 
-### 8. WebSocket (skeleton only)
+### 8. WebSocket (echo skeleton only)
 
-`src/api/ws.rs:18-25` has 4 TODOs:
+`src/api/ws.rs:20-27` has 4 TODOs:
+
 - Authentication on connect
-- Event channel subscriptions
+- Event channel subscriptions (KPI, agents, alerts, policies)
 - Heartbeat/ping-pong
 - Subscription message parsing
 
-Required for NFR-005 (10K concurrent connections) and NFR-021 (real-time UI updates).
+Currently every text message is echoed back. Required for NFR-005 (10K concurrent
+connections, <100ms p99) and NFR-021 (real-time UI updates).
 
 ---
 
-### 9. Integration Stubs (returning `not_configured`)
+### 9. Routes & Infrastructure TODOs
 
-These handlers exist and return valid JSON, but with placeholder data:
-- `durable_backends()` -- `integrations.rs:59` (FR-058)
-- `revocation_channels()` -- `integrations.rs:73` (FR-046)
-- `siem_status()` -- `integrations.rs:90` (FR-063)
+- **Prometheus `/metrics` endpoint** -- TODO at `src/api/routes.rs:17` (FR-063)
+- **CORS / tracing / rate-limiting layers** -- TODO at `src/api/routes.rs:18`
+- **TimescaleDB** (FR-058 durable attestation backend) — SQLite has effectively replaced
+  TimescaleDB as the persistence backend (#80). What remains true: `src/storage/db.rs`
+  (PgPool wrapper) is now dead code — referenced nowhere outside `src/storage/` — and the
+  migrations TODO at `src/storage/db.rs:36` is still open. Decide whether to keep
+  TimescaleDB as the durable backend or remove the module
+- **mTLS HSM/Vault keys** (SR-005/006) — `src/keylime/client.rs:97-101` rejects
+  `pkcs11://` and `vault://` key URIs; only file-based PEM identities are supported
+- **Dead code cleanup** — `src/models/alert_store.rs` (the pre-repository in-memory
+  `AlertStore`) is unused since #79/#80 and can be removed
 
 ---
 
 ### Suggested Implementation Order
 
-1. **Infrastructure wiring** -- DB + cache + session + audit in `AppState` + middleware
-2. **Authentication** -- OIDC flow + JWT middleware (unblocks RBAC enforcement)
-3. **Policy CRUD** -- create/update/delete/versioning (needs DB)
-4. **Alert generation** -- background health-check for Verifier/Registrar downtime, attestation failure -> alert creation
-5. **Alert persistence** -- migrate in-memory AlertStore to TimescaleDB (needs DB)
-6. **Alert notifications** -- `list_notifications` + `update_thresholds` handlers, external channel delivery (FR-009/010/011)
-7. **Audit log API** -- wire existing logger to handlers (needs DB)
-8. **Attestation incidents** -- correlation + root cause (needs DB for history)
-9. **WebSocket** -- real-time event streaming (includes alert push)
-10. **Remaining stubs** -- cert renewal, compliance export, DB metrics
+1. **AuthN/AuthZ enforcement** — real JWT secret + apply `require_auth`/RBAC middleware
+   to route groups (SR-001/010/011). Every mutating endpoint is currently unguarded;
+   this gates all write-path features below
+2. **OIDC login flow** — implement `src/auth/oidc.rs` + the 4 auth handlers, wire
+   `SessionStore` for revocation (SR-011)
+3. **Policy repository versioning** — `list_versions`/`diff`/`rollback` in both repo
+   backends, then the 7 policy handlers with Keylime write-through (FR-034/035/039)
+4. **Automatic alert generation** — extend the observation loop to raise/resolve
+   `service_down` and attestation-failure alerts in `AlertRepository` (FR-046/047/049)
+5. **Alert notifications & thresholds** — `list_notifications` + `update_thresholds`
+   handlers with threshold persistence (FR-009/011)
+6. **Audit API** — wire the 3 handlers to the existing `AuditRepository` and start
+   appending entries from mutating operations (FR-042/043/061)
+7. **Incident correlation** — repository `correlate_incidents`/`get_incident`/`get_pipeline`,
+   a writer for the `correlated_incidents` table, then the 3 incident handlers
+   (FR-026/027/028)
+8. **WebSocket event streaming** — auth, subscriptions, heartbeat; includes alert push
+   (NFR-005/021)
+9. **Remaining stubs & placeholders** — compliance export (FR-060), `database_metrics`
+   (FR-065), durable backends / revocation channels / SIEM status (FR-058/046/063)
+10. **Routes & infra polish** — `/metrics`, CORS/tracing/rate limiting, TimescaleDB
+    decision, HSM/Vault key support
